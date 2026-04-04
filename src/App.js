@@ -16,6 +16,14 @@ function App() {
   const canvasRef = useRef(null);
   const logoImgRef = useRef(null);
 
+  // ✅ Canvas size SIRF EK BAAR — mount pe
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = 640;
+    canvas.height = 360;
+  }, []);
+
   // Ticker animation
   useEffect(() => {
     const interval = setInterval(() => {
@@ -24,29 +32,24 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Draw canvas
+  // Draw canvas — canvas.width/height RESET NAHI
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
-    canvas.width = 640;
-    canvas.height = 360;
 
-    // Background gradient
     const grad = ctx.createLinearGradient(0, 0, 640, 360);
     grad.addColorStop(0, "#0f3460");
     grad.addColorStop(1, "#e94560");
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 640, 360);
 
-    // Breaking News banner
     ctx.fillStyle = "#cc0000";
     ctx.fillRect(0, 30, 280, 50);
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 26px Arial";
     ctx.fillText("BREAKING NEWS", 20, 65);
 
-    // Arrow
     ctx.fillStyle = "#cc0000";
     ctx.beginPath();
     ctx.moveTo(280, 30);
@@ -54,33 +57,28 @@ function App() {
     ctx.lineTo(280, 80);
     ctx.fill();
 
-    // Headline box
     ctx.fillStyle = "rgba(180,0,0,0.9)";
     ctx.fillRect(0, 90, 620, 58);
     ctx.fillStyle = "#FFD700";
     ctx.font = `bold ${fontSize}px ${fontFamily}`;
     ctx.fillText(headline.substring(0, 28), 12, 132);
 
-    // Description
     ctx.fillStyle = "#ffffff";
     ctx.font = "15px Arial";
     ctx.fillText(description, 12, 165);
 
-    // LIVE
     ctx.fillStyle = "#cc0000";
     ctx.fillRect(10, 288, 58, 28);
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 14px Arial";
     ctx.fillText("LIVE", 18, 307);
 
-    // NEWS 24
     ctx.fillStyle = "#003399";
     ctx.fillRect(70, 288, 82, 28);
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 13px Arial";
     ctx.fillText("NEWS 24", 76, 307);
 
-    // Logo
     if (logoImgRef.current) {
       ctx.drawImage(logoImgRef.current, 490, 282, 130, 36);
     } else {
@@ -91,10 +89,10 @@ function App() {
       ctx.fillText("YOUR LOGO", 500, 305);
     }
 
-    // Ticker bar
     ctx.fillStyle = "#FFD700";
     ctx.fillRect(0, 325, 640, 35);
     ctx.save();
+    ctx.beginPath();
     ctx.rect(0, 325, 640, 35);
     ctx.clip();
     ctx.fillStyle = "#000000";
@@ -112,7 +110,7 @@ function App() {
     img.src = logo;
   }, [logo]);
 
-  // Export using MediaRecorder
+  // ✅ FIXED Export
   const handleExport = async () => {
     if (!video) { alert("Please upload a video first!"); return; }
     setExporting(true);
@@ -120,26 +118,39 @@ function App() {
 
     try {
       const canvas = canvasRef.current;
+
+      // ✅ DOM mein add karo — audio ke liye zaruri
       const videoEl = document.createElement("video");
       videoEl.src = URL.createObjectURL(video);
       videoEl.muted = false;
+      videoEl.style.display = "none";
+      document.body.appendChild(videoEl);
+
       await new Promise((res) => { videoEl.onloadedmetadata = res; });
 
       const duration = videoEl.duration;
       const stream = canvas.captureStream(30);
 
-      // Add audio
+      // ✅ AudioContext
       const audioCtx = new AudioContext();
       const source = audioCtx.createMediaElementSource(videoEl);
       const dest = audioCtx.createMediaStreamDestination();
       source.connect(dest);
       source.connect(audioCtx.destination);
-      stream.addTrack(dest.stream.getAudioTracks()[0]);
 
-      const recorder = new MediaRecorder(stream, { mimeType: "video/webm;codecs=vp8,opus" });
+      const audioTrack = dest.stream.getAudioTracks()[0];
+      if (audioTrack) {
+        stream.addTrack(audioTrack);
+      }
+
+      const recorder = new MediaRecorder(stream, {
+        mimeType: "video/webm;codecs=vp8,opus",
+      });
       const chunks = [];
 
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
 
       recorder.onstop = () => {
         const blob = new Blob(chunks, { type: "video/webm" });
@@ -148,20 +159,17 @@ function App() {
         a.href = url;
         a.download = "bbn-news-video.webm";
         a.click();
+        document.body.removeChild(videoEl); // ✅ Cleanup
         setExporting(false);
         setProgress(100);
       };
 
-      // Draw video frames on canvas
+      // ✅ drawFrame — canvas reset NAHI
       const drawFrame = () => {
         const ctx = canvas.getContext("2d");
-        canvas.width = 640;
-        canvas.height = 360;
 
-        // Draw video
         ctx.drawImage(videoEl, 0, 0, 640, 360);
 
-        // Breaking News banner
         ctx.fillStyle = "#cc0000";
         ctx.fillRect(0, 30, 280, 50);
         ctx.fillStyle = "#ffffff";
@@ -208,6 +216,7 @@ function App() {
         ctx.fillStyle = "#FFD700";
         ctx.fillRect(0, 325, 640, 35);
         ctx.save();
+        ctx.beginPath();
         ctx.rect(0, 325, 640, 35);
         ctx.clip();
         ctx.fillStyle = "#000000";
@@ -220,12 +229,13 @@ function App() {
 
         if (!videoEl.paused && !videoEl.ended) {
           requestAnimationFrame(drawFrame);
+        } else if (videoEl.ended) {
+          recorder.stop();
         }
       };
 
-      recorder.start();
+      recorder.start(100); // ✅ 100ms chunks
       videoEl.play();
-      videoEl.ontimeupdate = () => { if (videoEl.ended) recorder.stop(); };
       requestAnimationFrame(drawFrame);
 
     } catch (err) {
@@ -236,7 +246,6 @@ function App() {
 
   return (
     <div className="bbn-app">
-      {/* TOP NAV */}
       <div className="top-nav">
         <div className="nav-logo">&#9654; BBN</div>
         {["Multiplex Panel","Photo News Maker","News Video Editor","Social Video Editor","Video Converter"].map((tab) => (
@@ -246,7 +255,6 @@ function App() {
       </div>
 
       <div className="editor-body">
-        {/* PREVIEW */}
         <div className="preview-panel">
           <div className="canvas-wrapper">
             <canvas ref={canvasRef} className="preview-canvas" />
@@ -268,7 +276,6 @@ function App() {
           </div>
         </div>
 
-        {/* CONTROLS */}
         <div className="controls-panel">
           <div className="control-section">
             <div className="control-label">Upload Video</div>
@@ -322,7 +329,7 @@ function App() {
           </div>
 
           <button className="export-btn" onClick={handleExport} disabled={exporting}>
-            {exporting ? `Exporting... ${progress}%` : "&#8659; Export Video"}
+            {exporting ? `Exporting... ${progress}%` : "⬇ Export Video"}
           </button>
         </div>
       </div>
