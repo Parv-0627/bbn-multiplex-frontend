@@ -229,3 +229,26 @@
 .controls-panel::-webkit-scrollbar { width: 4px; }
 .controls-panel::-webkit-scrollbar-track { background: #12152a; }
 .controls-panel::-webkit-scrollbar-thumb { background: #2a2f4a; border-radius: 2px; }
+.monitor-empty {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 10px; color: #555;
+  width: 100%; min-height: 200px; text-align: center;
+  font-size: 13px; line-height: 1.6;
+}
+.tpl-btn {
+  padding: 6px 4px; border-radius: 5px; border: 1.5px solid #2a2a35;
+  background: #111; color: #666; font-size: 11px; font-weight: 700;
+  cursor: pointer; transition: all 0.15s; letter-spacing: 0.5px;
+}
+.tpl-btn:hover { border-color: #444; color: #aaa; background: #1c1c21; }
+.tpl-btn.active { border-color: #CC0000; color: #fff; background: rgba(204,34,0,0.15); }
+.slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.slider-name { font-size: 11px; color: #777; min-width: 90px; flex-shrink: 0; }
+.slider-row input[type=range] { flex: 1; accent-color: #CC0000; }
+.slider-val { font-size: 10px; color: #aaa; min-width: 36px; text-align: right; font-family: monospace; }
+textarea.control-input {
+  width: 100%; resize: vertical; padding: 7px 10px;
+  background: #1c1c21; border: 1px solid #2a2a35; border-radius: 5px;
+  color: #f0f0f5; font-size: 13px; font-family: inherit; outline: none;
+}
+textarea.control-input:focus { border-color: #CC0000; }
