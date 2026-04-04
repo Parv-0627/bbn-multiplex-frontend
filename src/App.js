@@ -15,7 +15,7 @@ function App() {
     formData.append("headline", headline);
 
     const response = await fetch(
-      "https://unstayable-nondeprecatorily-flavia.ngrok-free.dev/convert",
+      "https://bbn-multiplex-backend.onrender.com/convert",
       {
         method: "POST",
         body: formData,
