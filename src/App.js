@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+﻿import React, { useState, useRef, useEffect } from "react";
 import "./App.css";
 
 function App() {
@@ -148,7 +148,7 @@ function App() {
           {/* TIMELINE */}
           <div className="timeline-bar">
             <div className="timeline-controls">
-              <button className="tl-btn">⏮</button>
+              <button className="tl-btn">â®</button>
               <button className="tl-btn play">▶</button>
               <div className="timeline-track">
                 <div className="timeline-progress"></div>
@@ -240,3 +240,4 @@ function App() {
 }
 
 export default App;
+
