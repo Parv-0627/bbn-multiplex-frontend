@@ -186,6 +186,9 @@ export default function App() {
   const [exporting, setExporting]       = useState(false);
   const [progress, setProgress]         = useState(0);
   const [blobUrl, setBlobUrl]           = useState(null);
+  const [converting, setConverting]     = useState(false);
+  const [convertMsg, setConvertMsg]     = useState("");
+  const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
 
   const canvasRef    = useRef(null);
   const videoElRef   = useRef(null);
@@ -193,6 +196,7 @@ export default function App() {
   const tickerXRef   = useRef(0);
   const exportingRef = useRef(false);
   const stateRef     = useRef({});
+  const ffmpegRef    = useRef(null);
 
   useEffect(() => {
     stateRef.current = {
@@ -297,21 +301,81 @@ export default function App() {
     vid.onended = () => { if (recorder.state !== "inactive") recorder.stop(); };
   };
 
-  const downloadBlob = (ext) => {
+  const downloadBlob = async (ext) => {
     if (!blobUrl) return;
-    const a = document.createElement("a");
-    a.href = blobUrl; a.download = `BBN_${template}_${Date.now()}.${ext}`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+
+    if (ext === "webm") {
+      const a = document.createElement("a");
+      a.href = blobUrl; a.download = `BBN_${template}_${Date.now()}.webm`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      return;
+    }
+
+    // MP4 — FFmpeg WASM real convert
+    setConverting(true);
+    setConvertMsg("⏳ FFmpeg load ho raha hai (~25MB)...");
+
+    try {
+      if (!ffmpegLoaded) {
+        await new Promise((res, rej) => {
+          const s1 = document.createElement("script");
+          s1.src = "https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js";
+          s1.onload = res; s1.onerror = () => rej(new Error("FFmpeg load fail"));
+          document.head.appendChild(s1);
+        });
+        setConvertMsg("📦 Util load ho raha hai...");
+        await new Promise((res, rej) => {
+          const s2 = document.createElement("script");
+          s2.src = "https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js";
+          s2.onload = res; s2.onerror = () => rej(new Error("Util load fail"));
+          document.head.appendChild(s2);
+        });
+        setConvertMsg("⚙️ Initialize ho raha hai...");
+        const { FFmpeg } = window.FFmpegWASM || {};
+        if (!FFmpeg) throw new Error("FFmpeg global nahi mila");
+        const ff = new FFmpeg();
+        ff.on("progress", ({ progress }) => {
+          setConvertMsg(`🎬 Convert: ${Math.round(progress * 100)}%`);
+        });
+        await ff.load({
+          coreURL: "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js"
+        });
+        ffmpegRef.current = ff;
+        setFfmpegLoaded(true);
+      }
+
+      setConvertMsg("📦 Video data load ho raha hai...");
+      const ff = ffmpegRef.current;
+      const buf = await (await fetch(blobUrl)).arrayBuffer();
+      await ff.writeFile("in.webm", new Uint8Array(buf));
+      setConvertMsg("🎬 Convert ho raha hai... thoda wait karo");
+      await ff.exec(["-i","in.webm","-c:v","libx264","-preset","ultrafast","-crf","23","-c:a","aac","-movflags","+faststart","out.mp4"]);
+      setConvertMsg("⬇ Download ho raha hai...");
+      const data = await ff.readFile("out.mp4");
+      const url = URL.createObjectURL(new Blob([data.buffer], { type: "video/mp4" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = `BBN_${template}_${Date.now()}.mp4`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      await ff.deleteFile("in.webm");
+      await ff.deleteFile("out.mp4");
+      setConvertMsg("✅ MP4 ready! Download ho gayi");
+      setTimeout(() => setConvertMsg(""), 3000);
+
+    } catch (e) {
+      setConvertMsg("❌ " + e.message);
+      setTimeout(() => setConvertMsg(""), 4000);
+    }
+    setConverting(false);
   };
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", background: "#0c0c0e" }}>
+    <div style={{ height:"100vh", display:"flex", flexDirection:"column", overflow:"hidden", background:"#0c0c0e" }}>
 
-      {/* TOP NAV */}
       <div className="top-nav">
         <div className="nav-logo">▶ BBN</div>
         {["Multiplex Panel","Photo News Maker","News Video Editor","Social Video Editor","Video Converter"].map(tab => (
-          <button key={tab} className={`nav-tab ${activeTab === tab ? "active" : ""}`}
+          <button key={tab} className={`nav-tab ${activeTab===tab?"active":""}`}
             onClick={() => setActiveTab(tab)}>{tab}</button>
         ))}
       </div>
@@ -324,7 +388,7 @@ export default function App() {
             <canvas ref={canvasRef} className="preview-canvas" style={{ display: vidMeta ? "block" : "none" }} />
             {!vidMeta && (
               <div className="monitor-empty">
-                <div style={{ fontSize: 44, opacity: 0.25 }}>▶</div>
+                <div style={{ fontSize:44, opacity:0.25 }}>▶</div>
                 <p>Koi video load nahi<br />Right panel mein video upload karo</p>
               </div>
             )}
@@ -332,7 +396,7 @@ export default function App() {
           <div className="timeline-bar">
             <div className="timeline-controls">
               <div className="timeline-track">
-                <div className="timeline-progress" style={{ width: `${progress}%` }} />
+                <div className="timeline-progress" style={{ width:`${progress}%` }} />
               </div>
               <span className="timeline-time">{progress}%</span>
             </div>
@@ -340,7 +404,14 @@ export default function App() {
           {blobUrl && (
             <div className="dl-row">
               <button className="dl-btn webm" onClick={() => downloadBlob("webm")}>⬇ WEBM</button>
-              <button className="dl-btn mp4"  onClick={() => downloadBlob("mp4")}>🎬 MP4</button>
+              <button className="dl-btn mp4" onClick={() => downloadBlob("mp4")} disabled={converting}>
+                {converting ? "Converting..." : "🎬 MP4"}
+              </button>
+            </div>
+          )}
+          {convertMsg && (
+            <div style={{ padding:"7px 12px", fontSize:11, color:"#4caf50", background:"rgba(76,175,80,0.08)", borderTop:"1px solid #2a2a35", fontFamily:"monospace" }}>
+              {convertMsg}
             </div>
           )}
         </div>
