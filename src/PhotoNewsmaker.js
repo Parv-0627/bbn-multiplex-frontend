@@ -946,6 +946,82 @@ export default function PhotoNewsmaker(){
     );
   }
 
+  // ── Mobile detect ──
+  const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+
+  // ══════════════════════════════════════════════════════════
+  // MOBILE LAYOUT — Canvas top, bottom sheet controls
+  // ══════════════════════════════════════════════════════════
+  if (isMobile) {
+    return (
+      <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 46px)",overflow:"hidden",background:"#060608"}}>
+
+        {/* ── TOP: Canvas area ── */}
+        <div style={{flex:"0 0 auto",display:"flex",flexDirection:"column",background:"#060608"}}>
+
+          {/* Template ribbon — horizontal scroll */}
+          <div style={{display:"flex",gap:5,padding:"6px 10px",overflowX:"auto",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",WebkitOverflowScrolling:"touch"}}>
+            {TEMPLATES.map(t=>(
+              <button key={t.id} onClick={()=>{setTemplate(t.id);setStep("template");}} style={{
+                padding:"5px 10px",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0,
+                background:template===t.id?"rgba(204,34,0,0.2)":"var(--bg-card)",
+                color:template===t.id?"#fff":"var(--txt-lo)",
+                border:template===t.id?"1.5px solid var(--red)":"1px solid var(--border)",
+                display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"
+              }}>{t.emoji} {t.label}</button>
+            ))}
+          </div>
+
+          {/* Canvas — compact height on mobile */}
+          <div style={{display:"flex",justifyContent:"center",alignItems:"center",padding:"8px",background:"#060608"}}>
+            <canvas ref={canvasRef} width={400} height={500}
+              style={{height:"200px",width:"160px",borderRadius:4,boxShadow:"0 4px 24px rgba(0,0,0,0.9)"}}/>
+          </div>
+
+          {/* Download button */}
+          <button onClick={downloadPNG} style={{
+            margin:"0 10px 8px",height:42,
+            background:"linear-gradient(135deg,#CC0000,#880000)",
+            color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:800,
+            letterSpacing:1,cursor:"pointer"
+          }}>⬇️ Download PNG</button>
+        </div>
+
+        {/* ── BOTTOM: Step tabs + content ── */}
+        <div style={{flex:1,display:"flex",flexDirection:"column",background:"var(--bg-panel)",borderTop:"2px solid var(--border)",overflow:"hidden"}}>
+
+          {/* Step tabs — icon + label */}
+          <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+            {STEPS.map((s,i)=>{
+              const done=STEPS.findIndex(x=>x.id===step)>i;
+              const active=step===s.id;
+              return(
+                <button key={s.id} onClick={()=>setStep(s.id)} style={{
+                  flex:1,display:"flex",flexDirection:"column",alignItems:"center",
+                  gap:2,padding:"8px 2px",cursor:"pointer",border:"none",
+                  background:active?"rgba(204,34,0,0.12)":"transparent",
+                  borderBottom:active?"2px solid var(--red)":"2px solid transparent",
+                  transition:"all 0.15s"
+                }}>
+                  <span style={{fontSize:18}}>{done?"✅":s.icon}</span>
+                  <span style={{fontSize:9,fontWeight:700,color:active?"#fff":done?"#4caf50":"var(--txt-lo)",letterSpacing:0.5}}>{s.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Step content — scrollable */}
+          <div style={{flex:1,overflowY:"auto",padding:"10px 12px",WebkitOverflowScrolling:"touch"}}>
+            {renderStepContent()}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // DESKTOP LAYOUT — unchanged
+  // ══════════════════════════════════════════════════════════
   return(
     <div style={{display:"flex",height:"calc(100vh - 46px)",overflow:"hidden",background:"#060608"}}>
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
