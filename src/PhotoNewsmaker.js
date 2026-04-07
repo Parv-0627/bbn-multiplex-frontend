@@ -458,6 +458,7 @@ export default function PhotoNewsmaker(){
   const [rawInput,  setRawInput]  = useState("");
   const [showTranslate,setShowTranslate]=useState(false);
   const [translating,setTranslating]=useState(false);
+  const [showPreview,setShowPreview]=useState(false);
 
   const canvasRef  = useRef(null);
   const photoRef   = useRef(null);
@@ -608,11 +609,66 @@ export default function PhotoNewsmaker(){
     return<div style={V.hdr}><span style={{fontSize:16}}>{icon}</span>{label}<span style={{flex:1,height:1,background:"rgba(212,165,32,0.3)"}}/></div>;
   }
 
+  // ── Nav buttons row: Back + Preview ──
+  function NavRow({backStep,backLabel="← Back"}){
+    return(
+      <div style={{display:"flex",gap:6,marginBottom:10}}>
+        <button onClick={()=>setStep(backStep)} style={{
+          flex:1,height:36,borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",
+          background:"transparent",border:"1px solid var(--border-hi)",color:"var(--txt-md)"
+        }}>{backLabel}</button>
+        <button onClick={()=>setShowPreview(true)} style={{
+          flex:1,height:36,borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",
+          background:"rgba(212,165,32,0.1)",border:"1px solid var(--accent)",color:"var(--accent)"
+        }}>👁 Preview</button>
+      </div>
+    );
+  }
+
+  // ── Full screen preview modal ──
+  function PreviewModal(){
+    if(!showPreview) return null;
+    return(
+      <div onClick={()=>setShowPreview(false)} style={{
+        position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:9999,
+        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14
+      }}>
+        <div style={{fontSize:11,color:"#888",letterSpacing:1}}>TAP ANYWHERE TO CLOSE</div>
+        <canvas
+          ref={el=>{
+            if(!el) return;
+            const src = canvasRef.current;
+            if(!src) return;
+            el.width=src.width; el.height=src.height;
+            el.getContext("2d").drawImage(src,0,0);
+          }}
+          style={{maxWidth:"92vw",maxHeight:"72vh",borderRadius:6,boxShadow:"0 8px 48px rgba(0,0,0,0.9)"}}
+        />
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={e=>{e.stopPropagation();downloadPNG();setShowPreview(false);}} style={{
+            height:44,padding:"0 28px",background:"linear-gradient(135deg,#CC0000,#880000)",
+            color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:800,cursor:"pointer"
+          }}>⬇️ Download PNG</button>
+          <button onClick={()=>setShowPreview(false)} style={{
+            height:44,padding:"0 20px",background:"transparent",
+            color:"#888",border:"1px solid #444",borderRadius:8,fontSize:13,cursor:"pointer"
+          }}>Close</button>
+        </div>
+      </div>
+    );
+  }
+
   const activeTpl=TEMPLATES.find(t=>t.id===template)||TEMPLATES[0];
 
   function renderStepContent(){
     if(step==="template") return(
       <div>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+          <button onClick={()=>setShowPreview(true)} style={{
+            height:34,padding:"0 16px",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",
+            background:"rgba(212,165,32,0.1)",border:"1px solid var(--accent)",color:"var(--accent)"
+          }}>👁 Preview</button>
+        </div>
         <SecHdr icon="🎨" label="Select Template"/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:12}}>
           {TEMPLATES.map(t=>(
@@ -674,6 +730,7 @@ export default function PhotoNewsmaker(){
 
     if(step==="photo") return(
       <div>
+        <NavRow backStep="template" backLabel="← Template"/>
         <SecHdr icon="📸" label="Upload Photo"/>
         <label style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,border:"2px dashed var(--border-hi)",borderRadius:8,padding:"16px 10px",cursor:"pointer",background:"var(--bg-card)",position:"relative",overflow:"hidden",marginBottom:8}}>
           <input type="file" accept="image/*" hidden onChange={handlePhotoFile}/>
@@ -719,6 +776,7 @@ export default function PhotoNewsmaker(){
 
     if(step==="text") return(
       <div>
+        <NavRow backStep="photo" backLabel="← Photo"/>
         <SecHdr icon="✍" label="News Headline"/>
         <div style={V.card}>
           <div style={{...V.sub,marginTop:0,fontSize:11,color:"var(--txt-md)"}}>Type or paste your headline</div>
@@ -891,6 +949,7 @@ export default function PhotoNewsmaker(){
 
     if(step==="logo") return(
       <div>
+        <NavRow backStep="text" backLabel="← Text"/>
         <SecHdr icon="📰" label="Your Channel Logo"/>
         <label style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,border:"2px dashed var(--border-hi)",borderRadius:8,padding:"16px 10px",cursor:"pointer",background:"var(--bg-card)",position:"relative",overflow:"hidden",marginBottom:8}}>
           <input type="file" accept="image/*" hidden onChange={handleLogoFile}/>
@@ -940,7 +999,7 @@ export default function PhotoNewsmaker(){
           ⬇️ Save & Download PNG
         </button>
         <button style={{...V.nextBtn,background:"transparent",border:"1px solid var(--border-hi)",color:"var(--txt-md)",marginTop:6}} onClick={()=>setStep("template")}>
-          ← Back to Start
+          ← Back to Template
         </button>
       </div>
     );
@@ -955,6 +1014,7 @@ export default function PhotoNewsmaker(){
   if (isMobile) {
     return (
       <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 46px)",overflow:"hidden",background:"#060608"}}>
+        <PreviewModal/>
 
         {/* ── TOP: Canvas area ── */}
         <div style={{flex:"0 0 auto",display:"flex",flexDirection:"column",background:"#060608"}}>
@@ -1024,6 +1084,7 @@ export default function PhotoNewsmaker(){
   // ══════════════════════════════════════════════════════════
   return(
     <div style={{display:"flex",height:"calc(100vh - 46px)",overflow:"hidden",background:"#060608"}}>
+      <PreviewModal/>
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
         <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",padding:"6px 10px",gap:4,flexShrink:0}}>
           {STEPS.map((s,i)=>{
