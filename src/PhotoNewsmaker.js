@@ -2,6 +2,9 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 
 const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
+// ── Firebase import for Firestore sync ───────────────────────
+import { saveUserData, loadUserData } from "./firebase";
+
 // ══════════════════════════════════════════════════════════════
 //  CLOUDINARY CONFIG — change only these two values if needed
 // ══════════════════════════════════════════════════════════════
@@ -443,7 +446,7 @@ function drawCard(canvas,photoImg,logoImg,cfg){
 // ══════════════════════════════════════════════════════════════
 // MAIN COMPONENT (unchanged from original)
 // ══════════════════════════════════════════════════════════════
-export default function PhotoNewsmaker(){
+export default function PhotoNewsmaker({ user = null }){
   const [step,      setStep]      = useState("template");
   const [template,  setTemplate]  = useState("classic");
   const [headHTML,  setHeadHTML]  = useState("Write your headline here");
@@ -592,27 +595,40 @@ export default function PhotoNewsmaker(){
 
   const lastSetHTML = useRef("");
 
-  // ── Save all state to localStorage on every change ─────────
+  // ── Save to localStorage + Firestore on every change ────────
   useEffect(()=>{
-    lsSave({
+    const data = {
       template,headHTML,source,badgeText,liveLabel,
       badgeColor,stripColor,boxBg,hlColor,tickerColor,fontSize,
       ovLogo,ovLive,ovBadge,ovStrip,ovDivider,ovSource,
       photoPos,photoH,brightness,contrast,saturation,blur,vignette,warmth,photoFilter,
       logoSize,logoPosKey,logoBorderColor,logoBorderWidth,logoShape,
       canvasFont,canvasColor,canvasBold,canvasItalic,
-      photoCloudUrl,logoCloudUrl,photoPrev:photoCloudUrl||null,logoPrev:logoCloudUrl||null,
-    });
+      photoCloudUrl,logoCloudUrl,
+    };
+    // Always save to localStorage (offline backup)
+    lsSave(data);
+    // If logged in — save to Firestore too (cross-device sync)
+    if(user?.uid) {
+      saveUserData(user.uid, { photoNewsmaker: data });
+    }
   // eslint-disable-next-line
   },[template,headHTML,source,badgeText,liveLabel,badgeColor,stripColor,boxBg,hlColor,
      tickerColor,fontSize,ovLogo,ovLive,ovBadge,ovStrip,ovDivider,ovSource,
      photoPos,photoH,brightness,contrast,saturation,blur,vignette,warmth,photoFilter,
      logoSize,logoPosKey,logoBorderColor,logoBorderWidth,logoShape,
-     canvasFont,canvasColor,canvasBold,canvasItalic,photoCloudUrl,logoCloudUrl]);
+     canvasFont,canvasColor,canvasBold,canvasItalic,photoCloudUrl,logoCloudUrl,user]);
 
-  // ── Restore from localStorage on first mount ───────────────
+  // ── Restore from Firestore (if logged in) else localStorage ──
   useEffect(()=>{
-    const d = lsLoad(); if(!d) return;
+    async function loadData() {
+      let d = null;
+      if(user?.uid) {
+        const fireData = await loadUserData(user.uid);
+        d = fireData?.photoNewsmaker || null;
+      }
+      if(!d) d = lsLoad(); // fallback to localStorage
+      if(!d) return;
     if(d.template)       setTemplate(d.template);
     if(d.headHTML)       setHeadHTML(d.headHTML);
     if(d.source)         setSource(d.source);
@@ -661,8 +677,10 @@ export default function PhotoNewsmaker(){
       img.onload=()=>{ logoRef.current=img; redraw(); };
       img.src=d.logoCloudUrl;
     }
+    }
+    loadData();
   // eslint-disable-next-line
-  },[]);
+  },[user]);
   useEffect(()=>{
     const b = hlBoxRef.current;
     if(!b) return;
