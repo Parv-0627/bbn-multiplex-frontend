@@ -1,6 +1,39 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 
 const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+// ══════════════════════════════════════════════════════════════
+//  CLOUDINARY CONFIG — change only these two values if needed
+// ══════════════════════════════════════════════════════════════
+const CLD_CLOUD  = "dlzowheen";
+const CLD_PRESET = "BBN Multiplex";
+const CLD_BASE   = `https://res.cloudinary.com/${CLD_CLOUD}/image/upload`;
+
+// Upload file to Cloudinary, returns secure_url (original quality)
+async function uploadToCloudinary(file, onProgress) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("upload_preset", CLD_PRESET);
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `https://api.cloudinary.com/v1_1/${CLD_CLOUD}/image/upload`);
+    xhr.upload.onprogress = e => { if(e.lengthComputable && onProgress) onProgress(Math.round(e.loaded/e.total*100)); };
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if(data.secure_url) resolve(data.secure_url);
+        else reject(new Error(data.error?.message || "Upload failed"));
+      } catch { reject(new Error("Parse error")); }
+    };
+    xhr.onerror = () => reject(new Error("Network error"));
+    xhr.send(fd);
+  });
+}
+
+// localStorage helpers — persist all settings across refresh
+const LS_KEY = "bbn_pnm_v1";
+function lsSave(obj) { try { localStorage.setItem(LS_KEY, JSON.stringify(obj)); } catch {} }
+function lsLoad() { try { const d = localStorage.getItem(LS_KEY); return d ? JSON.parse(d) : null; } catch { return null; } }
 const TEMPLATES=[
   {id:"classic",   label:"Classic",   emoji:"📰", desc:"Photo top, news bottom"},
   {id:"splitdark", label:"Split Dark",emoji:"🌓", desc:"Dark theme overlay"},
@@ -459,6 +492,11 @@ export default function PhotoNewsmaker(){
   const [showTranslate,setShowTranslate]=useState(false);
   const [translating,setTranslating]=useState(false);
   const [showPreview,setShowPreview]=useState(false);
+  const [photoUploading,setPhotoUploading]=useState(false);
+  const [photoUploadPct,setPhotoUploadPct]=useState(0);
+  const [logoUploading,setLogoUploading]=useState(false);
+  const [photoCloudUrl,setPhotoCloudUrl]=useState(null);
+  const [logoCloudUrl,setLogoCloudUrl]=useState(null);
 
   const canvasRef  = useRef(null);
   const photoRef   = useRef(null);
@@ -510,18 +548,121 @@ export default function PhotoNewsmaker(){
     img.onerror=()=>{const i=new Image();i.onload=()=>{photoRef.current=i;redraw();};i.src=src;};
     img.src=src;
   }
-  function handlePhotoFile(e){
-    const f=e.target.files[0];if(!f)return;
-    const r=new FileReader();r.onload=ev=>{setPhotoPrev(ev.target.result);loadPhotoSrc(ev.target.result);};r.readAsDataURL(f);
+
+  // ── Photo upload → Cloudinary ──────────────────────────────
+  async function handlePhotoFile(e){
+    const f=e.target.files[0]; if(!f) return;
+    // Show local preview instantly
+    const r=new FileReader();
+    r.onload=ev=>{ setPhotoPrev(ev.target.result); loadPhotoSrc(ev.target.result); };
+    r.readAsDataURL(f);
+    // Upload to Cloudinary in background
+    setPhotoUploading(true); setPhotoUploadPct(0);
+    try {
+      const url = await uploadToCloudinary(f, pct=>setPhotoUploadPct(pct));
+      setPhotoCloudUrl(url);
+      loadPhotoSrc(url); // reload from Cloudinary (original quality)
+      setPhotoPrev(url);
+    } catch(err) { console.warn("Cloudinary photo upload failed:", err.message); }
+    setPhotoUploading(false);
   }
-  function handleLogoFile(e){
-    const f=e.target.files[0];if(!f)return;
-    const r=new FileReader();r.onload=ev=>{
-      const img=new Image();img.onload=()=>{logoRef.current=img;setLogoPrev(ev.target.result);redraw();};img.src=ev.target.result;
-    };r.readAsDataURL(f);
+
+  // ── Logo upload → Cloudinary ───────────────────────────────
+  async function handleLogoFile(e){
+    const f=e.target.files[0]; if(!f) return;
+    // Show local preview instantly
+    const r=new FileReader();
+    r.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{ logoRef.current=img; setLogoPrev(ev.target.result); redraw(); };
+      img.src=ev.target.result;
+    };
+    r.readAsDataURL(f);
+    // Upload to Cloudinary
+    setLogoUploading(true);
+    try {
+      const url = await uploadToCloudinary(f, null);
+      setLogoCloudUrl(url);
+      const img=new Image(); img.crossOrigin="anonymous";
+      img.onload=()=>{ logoRef.current=img; setLogoPrev(url); redraw(); };
+      img.src=url;
+    } catch(err) { console.warn("Cloudinary logo upload failed:", err.message); }
+    setLogoUploading(false);
   }
 
   const lastSetHTML = useRef("");
+
+  // ── Save all state to localStorage on every change ─────────
+  useEffect(()=>{
+    lsSave({
+      template,headHTML,source,badgeText,liveLabel,
+      badgeColor,stripColor,boxBg,hlColor,tickerColor,fontSize,
+      ovLogo,ovLive,ovBadge,ovStrip,ovDivider,ovSource,
+      photoPos,photoH,brightness,contrast,saturation,blur,vignette,warmth,photoFilter,
+      logoSize,logoPosKey,logoBorderColor,logoBorderWidth,logoShape,
+      canvasFont,canvasColor,canvasBold,canvasItalic,
+      photoCloudUrl,logoCloudUrl,photoPrev:photoCloudUrl||null,logoPrev:logoCloudUrl||null,
+    });
+  // eslint-disable-next-line
+  },[template,headHTML,source,badgeText,liveLabel,badgeColor,stripColor,boxBg,hlColor,
+     tickerColor,fontSize,ovLogo,ovLive,ovBadge,ovStrip,ovDivider,ovSource,
+     photoPos,photoH,brightness,contrast,saturation,blur,vignette,warmth,photoFilter,
+     logoSize,logoPosKey,logoBorderColor,logoBorderWidth,logoShape,
+     canvasFont,canvasColor,canvasBold,canvasItalic,photoCloudUrl,logoCloudUrl]);
+
+  // ── Restore from localStorage on first mount ───────────────
+  useEffect(()=>{
+    const d = lsLoad(); if(!d) return;
+    if(d.template)       setTemplate(d.template);
+    if(d.headHTML)       setHeadHTML(d.headHTML);
+    if(d.source)         setSource(d.source);
+    if(d.badgeText)      setBadgeText(d.badgeText);
+    if(d.liveLabel)      setLiveLabel(d.liveLabel);
+    if(d.badgeColor)     setBadgeColor(d.badgeColor);
+    if(d.stripColor)     setStripColor(d.stripColor);
+    if(d.boxBg)          setBoxBg(d.boxBg);
+    if(d.hlColor)        setHlColor(d.hlColor);
+    if(d.tickerColor)    setTickerColor(d.tickerColor);
+    if(d.fontSize)       setFontSize(d.fontSize);
+    if(d.ovLogo!=null)   setOvLogo(d.ovLogo);
+    if(d.ovLive!=null)   setOvLive(d.ovLive);
+    if(d.ovBadge!=null)  setOvBadge(d.ovBadge);
+    if(d.ovStrip!=null)  setOvStrip(d.ovStrip);
+    if(d.ovDivider!=null)setOvDivider(d.ovDivider);
+    if(d.ovSource!=null) setOvSource(d.ovSource);
+    if(d.photoPos)       setPhotoPos(d.photoPos);
+    if(d.photoH)         setPhotoH(d.photoH);
+    if(d.brightness)     setBrightness(d.brightness);
+    if(d.contrast)       setContrast(d.contrast);
+    if(d.saturation)     setSaturation(d.saturation);
+    if(d.blur!=null)     setBlur(d.blur);
+    if(d.vignette!=null) setVignette(d.vignette);
+    if(d.warmth!=null)   setWarmth(d.warmth);
+    if(d.photoFilter)    setPhotoFilter(d.photoFilter);
+    if(d.logoSize)       setLogoSize(d.logoSize);
+    if(d.logoPosKey)     setLogoPosKey(d.logoPosKey);
+    if(d.logoBorderColor)setLogoBorderColor(d.logoBorderColor);
+    if(d.logoBorderWidth)setLogoBorderWidth(d.logoBorderWidth);
+    if(d.logoShape)      setLogoShape(d.logoShape);
+    if(d.canvasFont)     setCanvasFont(d.canvasFont);
+    if(d.canvasColor)    setCanvasColor(d.canvasColor);
+    if(d.canvasBold!=null)  setCanvasBold(d.canvasBold);
+    if(d.canvasItalic!=null)setCanvasItalic(d.canvasItalic);
+    // Restore photos from Cloudinary URLs
+    if(d.photoCloudUrl){
+      setPhotoCloudUrl(d.photoCloudUrl);
+      setPhotoPrev(d.photoCloudUrl);
+      loadPhotoSrc(d.photoCloudUrl);
+    }
+    if(d.logoCloudUrl){
+      setLogoCloudUrl(d.logoCloudUrl);
+      setLogoPrev(d.logoCloudUrl);
+      const img=new Image(); img.crossOrigin="anonymous";
+      img.onload=()=>{ logoRef.current=img; redraw(); };
+      img.src=d.logoCloudUrl;
+    }
+  // eslint-disable-next-line
+  },[]);
   useEffect(()=>{
     const b = hlBoxRef.current;
     if(!b) return;
@@ -663,7 +804,16 @@ export default function PhotoNewsmaker(){
   function renderStepContent(){
     if(step==="template") return(
       <div>
-        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <button onClick={()=>{
+            if(window.confirm("Sab saved data clear karna hai?")){
+              localStorage.removeItem("bbn_pnm_v1");
+              window.location.reload();
+            }
+          }} style={{
+            height:30,padding:"0 10px",borderRadius:5,fontSize:10,fontWeight:700,cursor:"pointer",
+            background:"transparent",border:"1px solid rgba(204,0,0,0.4)",color:"#CC0000"
+          }}>🗑 Clear Saved</button>
           <button onClick={()=>setShowPreview(true)} style={{
             height:34,padding:"0 16px",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",
             background:"rgba(212,165,32,0.1)",border:"1px solid var(--accent)",color:"var(--accent)"
@@ -734,9 +884,16 @@ export default function PhotoNewsmaker(){
         <SecHdr icon="📸" label="Upload Photo"/>
         <label style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,border:"2px dashed var(--border-hi)",borderRadius:8,padding:"16px 10px",cursor:"pointer",background:"var(--bg-card)",position:"relative",overflow:"hidden",marginBottom:8}}>
           <input type="file" accept="image/*" hidden onChange={handlePhotoFile}/>
-          <span style={{fontSize:30}}>🖼️</span>
-          <span style={{fontSize:12,fontWeight:700,color:"var(--txt-md)"}}>TAP TO UPLOAD PHOTO</span>
-          <span style={{fontSize:10,color:"var(--txt-lo)"}}>JPG · PNG · WEBP · Any size</span>
+          <span style={{fontSize:30}}>{photoUploading?"⏳":"🖼️"}</span>
+          <span style={{fontSize:12,fontWeight:700,color:"var(--txt-md)"}}>
+            {photoUploading?`Uploading... ${photoUploadPct}%`:"TAP TO UPLOAD PHOTO"}
+          </span>
+          <span style={{fontSize:10,color:"var(--txt-lo)"}}>
+            {photoCloudUrl?"☁️ Saved on Cloudinary":"JPG · PNG · WEBP · Any size"}
+          </span>
+          {photoUploading&&<div style={{width:"100%",height:3,background:"var(--border)",borderRadius:2,marginTop:4}}>
+            <div style={{width:`${photoUploadPct}%`,height:"100%",background:"var(--accent)",borderRadius:2,transition:"width 0.2s"}}/>
+          </div>}
         </label>
         {photoPrev&&<img src={photoPrev} alt="" style={{width:"100%",height:80,objectFit:"cover",borderRadius:6,marginBottom:10,border:"1px solid var(--border)"}}/>}
         <div style={{...V.sub,marginTop:0}}>Or enter photo URL</div>
@@ -953,9 +1110,13 @@ export default function PhotoNewsmaker(){
         <SecHdr icon="📰" label="Your Channel Logo"/>
         <label style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,border:"2px dashed var(--border-hi)",borderRadius:8,padding:"16px 10px",cursor:"pointer",background:"var(--bg-card)",position:"relative",overflow:"hidden",marginBottom:8}}>
           <input type="file" accept="image/*" hidden onChange={handleLogoFile}/>
-          <span style={{fontSize:30}}>📰</span>
-          <span style={{fontSize:12,fontWeight:700,color:"var(--txt-md)"}}>UPLOAD YOUR CHANNEL LOGO</span>
-          <span style={{fontSize:10,color:"var(--txt-lo)"}}>PNG with transparent background recommended</span>
+          <span style={{fontSize:30}}>{logoUploading?"⏳":"📰"}</span>
+          <span style={{fontSize:12,fontWeight:700,color:"var(--txt-md)"}}>
+            {logoUploading?"Uploading to Cloud...":"UPLOAD YOUR CHANNEL LOGO"}
+          </span>
+          <span style={{fontSize:10,color:"var(--txt-lo)"}}>
+            {logoCloudUrl?"☁️ Saved on Cloudinary":"PNG with transparent background recommended"}
+          </span>
         </label>
         {logoPrev&&(
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
