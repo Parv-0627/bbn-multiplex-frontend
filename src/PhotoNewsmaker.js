@@ -104,71 +104,60 @@ const FONT_SIZE_MAP={1:10,2:13,3:16,4:18,5:24,6:32,7:48};
 //      and position headline dynamically (no more hardcoded offsets)
 // ══════════════════════════════════════════════════════════════
 
-// Returns array of line-token arrays WITHOUT drawing anything
-function measureLines(ctx, segs, maxW, fsPx) {
-  const fullText = segs.map(s => s.t).join("");
+// ── COMPLETELY REWRITTEN WRAP + DRAW (no token splitting, no space tokens) ──
+// Approach: wrap words into string lines, draw each line centered with fillText
+// This avoids all token-width accumulation errors that cause overlap/cutoff
+
+function buildLines(ctx, text, fontStr, maxW) {
+  ctx.font = fontStr;
+  const words = (text || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = "";
+  for (const word of words) {
+    const test = cur ? cur + " " + word : word;
+    if (ctx.measureText(test).width > maxW && cur) {
+      lines.push(cur);
+      cur = word;
+    } else {
+      cur = test;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [""];
+}
+
+// Returns total pixel height
+function measureTextH(ctx, segs, maxW, fsPx) {
+  const text = segs.map(s => s.t).join("") || "Text";
   const style  = segs[0]?.i ? "italic" : "normal";
   const weight = "900";
   const family = segs[0]?.f ? `'${segs[0].f}',Arial,sans-serif` : "Arial,sans-serif";
-  const color  = segs[0]?.c || null;
   const fontStr = `${style} ${weight} ${fsPx}px ${family}`;
-
-  ctx.font = fontStr;
-  const spaceW = ctx.measureText(" ").width;
-  const rawWords = fullText.split(/\s+/).filter(w => w.length > 0);
-
-  const lines = [];
-  let curLine = [], curW = 0;
-
-  for (const word of rawWords) {
-    const wordW = ctx.measureText(word).width;
-    const addW = curLine.length > 0 ? spaceW + wordW : wordW;
-    if (curW + addW > maxW && curLine.length > 0) {
-      lines.push([...curLine]);
-      curLine = [{text: word, w: wordW, fontStr, color}];
-      curW = wordW;
-    } else {
-      if (curLine.length > 0) {
-        curLine.push({text: " ", w: spaceW, fontStr, color});
-        curW += spaceW;
-      }
-      curLine.push({text: word, w: wordW, fontStr, color});
-      curW += wordW;
-    }
-  }
-  if (curLine.length) lines.push(curLine);
-  return lines;
+  const lines = buildLines(ctx, text, fontStr, maxW);
+  return lines.length * fsPx * 1.45;
 }
 
-// Returns total pixel height of headline block (for layout pre-calc)
-function measureTextH(ctx, segs, maxW, fsPx) {
-  const lines = measureLines(ctx, segs, maxW, fsPx);
-  return Math.max(lines.length, 1) * fsPx * 1.45;
-}
-
-// Draws headline centered at cx, starting at topY (not middle!)
+// Draw headline — cx=center X, topY=top Y, maxW=max line width
 function drawColorHL(ctx, segs, cx, topY, maxW, fsPx, defColor) {
   if (!segs || !segs.length) return 0;
-  ctx.save();
-  ctx.textBaseline = "top"; // FIX: "top" gives exact pixel position
+  const text = segs.map(s => s.t).join("") || "Text";
+  const style  = segs[0]?.i ? "italic" : "normal";
+  const weight = "900";
+  const family = segs[0]?.f ? `'${segs[0].f}',Arial,sans-serif` : "Arial,sans-serif";
+  const color  = segs[0]?.c || defColor || "#111";
+  const fontStr = `${style} ${weight} ${fsPx}px ${family}`;
 
-  const lines = measureLines(ctx, segs, maxW, fsPx);
+  ctx.save();
+  ctx.font = fontStr;
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";   // center align — no manual x calculation
+  ctx.textBaseline = "top";
+
+  const lines = buildLines(ctx, text, fontStr, maxW);
   const lh = fsPx * 1.45;
 
-  for (let li = 0; li < lines.length; li++) {
-    const line = lines[li];
-    let lineW = 0;
-    for (const tok of line) lineW += tok.w;
-
-    let x = cx - lineW / 2;
-    const y = topY + li * lh;
-
-    for (const tok of line) {
-      ctx.font = tok.fontStr;
-      ctx.fillStyle = tok.color || defColor || "#111";
-      ctx.fillText(tok.text, x, y);
-      x += tok.w;
-    }
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], cx, topY + i * lh);
   }
 
   ctx.restore();
