@@ -882,4 +882,6 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
           </div>
         </>
       )}
+    </div>
+  );
 }
