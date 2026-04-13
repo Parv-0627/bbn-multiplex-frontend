@@ -1,12 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { saveUserData, loadUserData } from "./firebase";
+import { SAMPLE_NEWS_IMAGE } from "./sampleImage";
 
 const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-// ── Firebase import for Firestore sync ───────────────────────
-import { saveUserData, loadUserData } from "./firebase";
-
-// ── Sample / Demo photo — shown by default in all templates ──
-import { SAMPLE_NEWS_IMAGE } from "./sampleImage";
 const SAMPLE_CAPTION = "दिल्ली-NCR में बारिश का कहर, मौसम विभाग ने दी चेतावनी!";
 
 // ══════════════════════════════════════════════════════════════
