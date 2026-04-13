@@ -6,7 +6,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import "./App.css";
 import PhotoNewsmaker  from "./PhotoNewsmaker";
 import MultiplexPanel  from "./MultiplexPanel";
-import SocialVideoEditor from "./SocialVideoEditor";
+import SocialPhotoEditor from "./SocialPhotoEditor";
 import VideoConverter  from "./VideoConverter";
 import { signInWithGoogle, signOutUser, onAuthChange, saveUserData, loadUserData } from "./firebase";
 
@@ -49,7 +49,7 @@ function drawLogo(ctx, W, sc) {
   ctx.fillStyle=g; ctx.fillText("BBN",lx+lr,ly+lr+0.5); ctx.restore();
 }
 
-const TABS = ["Multiplex Panel","Photo News Maker","News Video Editor","Social Video Editor","Video Converter"];
+const TABS = ["Multiplex Panel","Photo News Maker","News Video Editor","Social Photo Editor","Video Converter"];
 
 export default function App() {
   const [activeTab,    setActiveTab]    = useState("Multiplex Panel");
@@ -542,7 +542,7 @@ export default function App() {
       {/* Tab content */}
       {activeTab === "Multiplex Panel"    && <MultiplexPanel onNavigate={setActiveTab} user={user}/>}
       {activeTab === "Photo News Maker"   && <PhotoNewsmaker user={user} globalLogo={globalLogo}/>}
-      {activeTab === "Social Video Editor"&& <SocialVideoEditor/>}
+      {activeTab === "Social Photo Editor" && <SocialPhotoEditor user={user} globalLogo={globalLogo}/>}
       {activeTab === "Video Converter"    && <VideoConverter/>}
 
       {/* News Video Editor */}
