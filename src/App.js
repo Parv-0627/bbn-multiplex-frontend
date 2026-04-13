@@ -8,7 +8,7 @@ import PhotoNewsmaker  from "./PhotoNewsmaker";
 import MultiplexPanel  from "./MultiplexPanel";
 import SocialVideoEditor from "./SocialVideoEditor";
 import VideoConverter  from "./VideoConverter";
-import { signInWithGoogle, signOutUser, onAuthChange } from "./firebase";
+import { signInWithGoogle, signOutUser, onAuthChange, saveUserData, loadUserData } from "./firebase";
 
 // ── Video editor helpers ──────────────────────────────────────
 function wrapText(ctx, text, x, y, maxW, lineH) {
@@ -56,6 +56,10 @@ export default function App() {
   const [user,         setUser]         = useState(null);
   const [authLoading,  setAuthLoading]  = useState(true);
   const [signingIn,    setSigningIn]    = useState(false);
+  const [globalLogo,   setGlobalLogo]   = useState(null);   // { url, dataUrl } — shared across all tools
+  const [showLogoSetup,setShowLogoSetup]= useState(false);  // first-login logo upload modal
+  const [logoSetupDone,setLogoSetupDone]= useState(false);
+  const [logoUploading,setLogoUploading]= useState(false);
 
   // News Video Editor state
   const [headlineText, setHeadlineText] = useState("Headline yahan likhein...");
@@ -86,9 +90,20 @@ export default function App() {
 
   // ── Auth listener ────────────────────────────────────────────
   useEffect(() => {
-    const unsub = onAuthChange(u => {
+    const unsub = onAuthChange(async u => {
       setUser(u);
       setAuthLoading(false);
+      if (u?.uid) {
+        // Load user data — check if logo already set
+        const data = await loadUserData(u.uid);
+        if (data?.globalLogo?.url) {
+          setGlobalLogo(data.globalLogo);
+          setLogoSetupDone(true);
+        } else {
+          // First login or no logo set — show setup modal
+          setShowLogoSetup(true);
+        }
+      }
     });
     return () => unsub();
   }, []);
@@ -97,6 +112,106 @@ export default function App() {
     setSigningIn(true);
     await signInWithGoogle();
     setSigningIn(false);
+  }
+
+  // ── Global logo upload (Cloudinary) ──────────────────────────
+  const CLD_CLOUD  = "dlzowheen";
+  const CLD_PRESET = "BBN Multiplex";
+  async function uploadLogoToCloudinary(file) {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("upload_preset", CLD_PRESET);
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLD_CLOUD}/image/upload`, { method:"POST", body:fd });
+    const data = await res.json();
+    if (data.secure_url) return data.secure_url;
+    throw new Error(data.error?.message || "Upload failed");
+  }
+
+  async function handleGlobalLogoFile(e) {
+    const f = e.target.files[0]; if (!f) return;
+    setLogoUploading(true);
+    try {
+      // Local preview instantly
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const dataUrl = ev.target.result;
+        let url = dataUrl;
+        try { url = await uploadLogoToCloudinary(f); } catch(err) { console.warn("Cloudinary failed, using local"); }
+        const logo = { url, dataUrl };
+        setGlobalLogo(logo);
+        if (user?.uid) await saveUserData(user.uid, { globalLogo: logo });
+        setLogoSetupDone(true);
+        setShowLogoSetup(false);
+      };
+      reader.readAsDataURL(f);
+    } catch(err) { console.warn("Logo upload error:", err); }
+    setLogoUploading(false);
+  }
+
+  async function skipLogoSetup() {
+    setLogoSetupDone(true);
+    setShowLogoSetup(false);
+    if (user?.uid) await saveUserData(user.uid, { globalLogo: null, logoSetupSkipped: true });
+  }
+
+  // ── Logo Setup Modal ─────────────────────────────────────────
+  function LogoSetupModal() {
+    if (!showLogoSetup) return null;
+    return (
+      <div style={{
+        position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:99999,
+        display:"flex", alignItems:"center", justifyContent:"center", padding:20
+      }}>
+        <div style={{
+          background:"#16161a", border:"1px solid #2a2a35", borderRadius:14,
+          padding:"28px 24px", maxWidth:360, width:"100%", textAlign:"center"
+        }}>
+          {/* BBN Gold Icon */}
+          <div style={{
+            width:64, height:64, borderRadius:"50%", background:"#0a0a0a",
+            border:"2px solid #D4A520", display:"flex", alignItems:"center",
+            justifyContent:"center", margin:"0 auto 16px", fontSize:18,
+            fontWeight:900, color:"#D4A520", letterSpacing:1
+          }}>BBN</div>
+
+          <div style={{ fontSize:16, fontWeight:800, color:"#f0f0f5", marginBottom:6 }}>
+            Apna Channel Logo Upload Karo
+          </div>
+          <div style={{ fontSize:12, color:"#666", marginBottom:20, lineHeight:1.7 }}>
+            Yeh logo <strong style={{color:"#D4A520"}}>har jagah automatically use hoga</strong> —
+            Photo News Maker, Video Editor, sab mein.<br/>
+            Baad mein bhi change kar sakte ho Settings se.
+          </div>
+
+          {/* Upload box */}
+          <label style={{
+            display:"flex", flexDirection:"column", alignItems:"center", gap:8,
+            border:"2px dashed #D4A520", borderRadius:10, padding:"20px 16px",
+            cursor:"pointer", background:"rgba(212,165,32,0.04)", marginBottom:12
+          }}>
+            <input type="file" accept="image/*" hidden onChange={handleGlobalLogoFile}/>
+            <span style={{ fontSize:36 }}>{logoUploading ? "⏳" : "📰"}</span>
+            <span style={{ fontSize:13, fontWeight:700, color:"#D4A520" }}>
+              {logoUploading ? "Upload ho raha hai..." : "TAP TO UPLOAD LOGO"}
+            </span>
+            <span style={{ fontSize:11, color:"#555" }}>PNG transparent background best hai</span>
+            {logoUploading && (
+              <div style={{ width:"100%", height:3, background:"#222", borderRadius:2 }}>
+                <div style={{ width:"60%", height:"100%", background:"#D4A520", borderRadius:2,
+                  animation:"pulse 1s infinite" }}/>
+              </div>
+            )}
+          </label>
+
+          <button onClick={skipLogoSetup} style={{
+            width:"100%", height:36, borderRadius:7, fontSize:12, fontWeight:600,
+            background:"transparent", border:"1px solid #333", color:"#555", cursor:"pointer"
+          }}>
+            Abhi Nahi — Baad Mein Upload Karunga
+          </button>
+        </div>
+      </div>
+    );
   }
 
   useEffect(() => {
@@ -398,6 +513,8 @@ export default function App() {
     <div style={{ height:"100vh", display:"flex", flexDirection:"column",
       overflow:"hidden", background:"#0c0c0e" }}>
 
+      <LogoSetupModal/>
+
       {/* Top Nav */}
       <div className="top-nav">
         <div className="nav-logo">BBN</div>
@@ -424,7 +541,7 @@ export default function App() {
 
       {/* Tab content */}
       {activeTab === "Multiplex Panel"    && <MultiplexPanel onNavigate={setActiveTab} user={user}/>}
-      {activeTab === "Photo News Maker"   && <PhotoNewsmaker user={user}/>}
+      {activeTab === "Photo News Maker"   && <PhotoNewsmaker user={user} globalLogo={globalLogo}/>}
       {activeTab === "Social Video Editor"&& <SocialVideoEditor/>}
       {activeTab === "Video Converter"    && <VideoConverter/>}
 

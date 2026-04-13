@@ -5,6 +5,10 @@ const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov",
 // ── Firebase import for Firestore sync ───────────────────────
 import { saveUserData, loadUserData } from "./firebase";
 
+// ── Sample / Demo photo — shown by default in all templates ──
+import { SAMPLE_NEWS_IMAGE } from "./sampleImage";
+const SAMPLE_CAPTION = "दिल्ली-NCR में बारिश का कहर, मौसम विभाग ने दी चेतावनी!";
+
 // ══════════════════════════════════════════════════════════════
 //  CLOUDINARY CONFIG — change only these two values if needed
 // ══════════════════════════════════════════════════════════════
@@ -446,7 +450,7 @@ function drawCard(canvas,photoImg,logoImg,cfg){
 // ══════════════════════════════════════════════════════════════
 // MAIN COMPONENT (unchanged from original)
 // ══════════════════════════════════════════════════════════════
-export default function PhotoNewsmaker({ user = null }){
+export default function PhotoNewsmaker({ user = null, globalLogo = null }){
   const [step,      setStep]      = useState("template");
   const [template,  setTemplate]  = useState("classic");
   const [headHTML,  setHeadHTML]  = useState("Write your headline here");
@@ -515,6 +519,44 @@ export default function PhotoNewsmaker({ user = null }){
     if(b) return (b.innerText || b.textContent || "").trim() || "Write your headline here";
     return headHTML.replace(/<[^>]+>/g,"").replace(/&nbsp;/g," ").trim() || "Write your headline here";
   }
+
+  // ── Auto-load globalLogo from App if no local logo set ────────
+  useEffect(() => {
+    if (!globalLogo?.url) return;
+    if (logoPrev) return; // already has a local logo — don't override
+    const url = globalLogo.url;
+    setLogoCloudUrl(url);
+    setLogoPrev(url);
+    const img = new Image(); img.crossOrigin = "anonymous";
+    img.onload = () => { logoRef.current = img; redraw(); };
+    img.onerror = () => {
+      if (globalLogo.dataUrl) {
+        const img2 = new Image();
+        img2.onload = () => { logoRef.current = img2; setLogoPrev(globalLogo.dataUrl); redraw(); };
+        img2.src = globalLogo.dataUrl;
+      }
+    };
+    img.src = url;
+  // eslint-disable-next-line
+  }, [globalLogo]);
+
+  // ── Load sample/demo image on first open (no saved photo) ────
+  useEffect(() => {
+    // Only load sample if user has no saved photo
+    const saved = lsLoad();
+    if (saved?.photoCloudUrl || saved?.photoPrev) return; // user already has a photo
+    // Load the sample image as default
+    const img = new Image();
+    img.onload = () => {
+      photoRef.current = img;
+      setPhotoPrev(SAMPLE_NEWS_IMAGE);
+      // Also pre-fill headline with sample caption
+      setHeadHTML(SAMPLE_CAPTION);
+      redraw();
+    };
+    img.src = SAMPLE_NEWS_IMAGE;
+  // eslint-disable-next-line
+  }, []);
 
   const redraw = useCallback(()=>{
     const c=canvasRef.current;if(!c)return;
@@ -669,6 +711,12 @@ export default function PhotoNewsmaker({ user = null }){
       setPhotoCloudUrl(d.photoCloudUrl);
       setPhotoPrev(d.photoCloudUrl);
       loadPhotoSrc(d.photoCloudUrl);
+    } else {
+      // No saved photo → load sample image
+      const img = new Image();
+      img.onload = () => { photoRef.current = img; redraw(); };
+      img.src = SAMPLE_NEWS_IMAGE;
+      setPhotoPrev(SAMPLE_NEWS_IMAGE);
     }
     if(d.logoCloudUrl){
       setLogoCloudUrl(d.logoCloudUrl);
@@ -747,12 +795,99 @@ export default function PhotoNewsmaker({ user = null }){
     card:{background:"var(--bg-card)",border:"1px solid var(--border)",borderRadius:6,padding:10,marginBottom:8},
   };
 
-  function Sl({label,value,setter,min,max,unit="",step=1}){
-    return<div style={V.row}>
-      <span style={V.snm}>{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={e=>setter(Number(e.target.value))} style={{flex:1,accentColor:"var(--red)"}}/>
-      <span style={V.svl}>{value}{unit}</span>
-    </div>;
+  // ── Circular Knob Slider — drag to change value ──────────────
+  function Sl({label, value, setter, min, max, unit="", step=1}){
+    const knobRef = useRef(null);
+    const dragging = useRef(false);
+    const startY = useRef(0);
+    const startVal = useRef(value);
+    const range = max - min;
+
+    // Convert value to angle (−135° to +135°, total 270°)
+    const pct = (value - min) / range;
+    const angle = -135 + pct * 270;
+
+    function clamp(v){ return Math.min(max, Math.max(min, v)); }
+    function snapToStep(v){ return Math.round(v / step) * step; }
+
+    function onPointerDown(e){
+      e.preventDefault();
+      dragging.current = true;
+      startY.current = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+      startVal.current = value;
+      knobRef.current?.setPointerCapture?.(e.pointerId);
+    }
+    function onPointerMove(e){
+      if(!dragging.current) return;
+      const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+      const dy = startY.current - clientY; // drag up = increase
+      const delta = (dy / 100) * range;
+      setter(clamp(snapToStep(startVal.current + delta)));
+    }
+    function onPointerUp(){ dragging.current = false; }
+
+    const trackR = 18;
+    const knobR = 14;
+    const cx = 22; const cy = 22;
+    // Track arc: from −135° to +135°
+    function polarPoint(angleDeg, r){
+      const rad = (angleDeg - 90) * Math.PI / 180;
+      return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+    }
+    const startPt = polarPoint(-135, trackR);
+    const endPt   = polarPoint(135,  trackR);
+    const activePt= polarPoint(angle, trackR);
+    // SVG arc for track
+    function arcPath(a1, a2, r){
+      const p1 = polarPoint(a1, r);
+      const p2 = polarPoint(a2, r);
+      const large = (a2 - a1) > 180 ? 1 : 0;
+      return `M ${p1.x} ${p1.y} A ${r} ${r} 0 ${large} 1 ${p2.x} ${p2.y}`;
+    }
+    const activeLarge = (angle - (-135)) > 180 ? 1 : 0;
+
+    return (
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+        {/* Knob SVG */}
+        <div style={{ position:"relative", width:44, height:44, flexShrink:0, cursor:"ns-resize", userSelect:"none", touchAction:"none" }}
+          ref={knobRef}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerLeave={onPointerUp}
+        >
+          <svg width="44" height="44" style={{ overflow:"visible" }}>
+            {/* Background track */}
+            <path d={arcPath(-135, 135, trackR)} fill="none" stroke="#2a2a35" strokeWidth="3" strokeLinecap="round"/>
+            {/* Active track */}
+            <path
+              d={`M ${startPt.x} ${startPt.y} A ${trackR} ${trackR} 0 ${activeLarge} 1 ${activePt.x} ${activePt.y}`}
+              fill="none" stroke="var(--red,#CC0000)" strokeWidth="3" strokeLinecap="round"
+            />
+            {/* Knob circle */}
+            <circle cx={cx} cy={cy} r={knobR} fill="#1e1e26" stroke="#3a3a48" strokeWidth="1.5"/>
+            {/* Tick indicator */}
+            <line
+              x1={cx} y1={cy - 5}
+              x2={cx + 7 * Math.cos((angle - 90) * Math.PI / 180)}
+              y2={cy + 7 * Math.sin((angle - 90) * Math.PI / 180)}
+              stroke="#D4A520" strokeWidth="2" strokeLinecap="round"
+            />
+          </svg>
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:9, color:"var(--txt-lo)", fontWeight:600, letterSpacing:0.5, marginBottom:1 }}>{label}</div>
+          {/* Also a thin range input as fallback / fine-tune */}
+          <input type="range" min={min} max={max} step={step} value={value}
+            onChange={e => setter(Number(e.target.value))}
+            style={{ width:"100%", accentColor:"var(--red,#CC0000)", height:3, cursor:"pointer" }}
+          />
+        </div>
+        <span style={{ fontSize:10, color:"var(--txt-md)", minWidth:34, textAlign:"right", fontFamily:"monospace" }}>
+          {value}{unit}
+        </span>
+      </div>
+    );
   }
   function Tog({on,fn,lbl}){
     return<div style={V.togRow}><span style={V.togLbl}>{lbl}</span><button className={`toggle-sw ${on?"on":""}`} onClick={fn}/></div>;
@@ -914,6 +1049,18 @@ export default function PhotoNewsmaker({ user = null }){
           </div>}
         </label>
         {photoPrev&&<img src={photoPrev} alt="" style={{width:"100%",height:80,objectFit:"cover",borderRadius:6,marginBottom:10,border:"1px solid var(--border)"}}/>}
+
+        {/* Sample photo button */}
+        <button onClick={()=>{
+          const img=new Image();
+          img.onload=()=>{photoRef.current=img;setPhotoPrev(SAMPLE_NEWS_IMAGE);setPhotoCloudUrl(null);redraw();};
+          img.src=SAMPLE_NEWS_IMAGE;
+          setHeadHTML(SAMPLE_CAPTION);
+        }} style={{
+          width:"100%",height:32,borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",
+          background:"rgba(212,165,32,0.08)",border:"1px solid rgba(212,165,32,0.3)",
+          color:"#D4A520",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"center",gap:6
+        }}>🖼️ Sample Photo Reload Karo (Delhi Rain)</button>
         <div style={{...V.sub,marginTop:0}}>Or enter photo URL</div>
         <input className="control-input" placeholder="https://example.com/photo.jpg" style={{marginBottom:10}}
           onBlur={e=>{if(e.target.value.trim()){setPhotoPrev(e.target.value.trim());loadPhotoSrc(e.target.value.trim());}}}/>
@@ -1126,11 +1273,41 @@ export default function PhotoNewsmaker({ user = null }){
       <div>
         <NavRow backStep="text" backLabel="← Text"/>
         <SecHdr icon="📰" label="Your Channel Logo"/>
+
+        {/* Global logo shortcut — if set in App */}
+        {globalLogo?.url && !logoPrev && (
+          <div style={{
+            background:"rgba(212,165,32,0.08)", border:"1.5px solid rgba(212,165,32,0.3)",
+            borderRadius:8, padding:"10px 12px", marginBottom:10,
+            display:"flex", alignItems:"center", gap:10
+          }}>
+            <img src={globalLogo.url} alt="" style={{
+              width:42, height:42, objectFit:"contain", borderRadius:"50%",
+              border:"1px solid #D4A520", background:"#111"
+            }}/>
+            <div style={{flex:1}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#D4A520",marginBottom:3}}>✨ Channel Logo Available</div>
+              <div style={{fontSize:10,color:"var(--txt-lo)",marginBottom:5}}>Login ke waqt upload kiya hua logo use karo</div>
+              <button onClick={()=>{
+                const url = globalLogo.url;
+                setLogoCloudUrl(url); setLogoPrev(url);
+                const img=new Image(); img.crossOrigin="anonymous";
+                img.onload=()=>{ logoRef.current=img; redraw(); };
+                img.src=url;
+              }} style={{
+                height:28, padding:"0 12px", borderRadius:5, fontSize:11, fontWeight:700,
+                background:"linear-gradient(135deg,rgba(212,165,32,0.2),rgba(212,165,32,0.1))",
+                color:"#D4A520", border:"1px solid #D4A520", cursor:"pointer"
+              }}>⚡ Use Channel Logo</button>
+            </div>
+          </div>
+        )}
+
         <label style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,border:"2px dashed var(--border-hi)",borderRadius:8,padding:"16px 10px",cursor:"pointer",background:"var(--bg-card)",position:"relative",overflow:"hidden",marginBottom:8}}>
           <input type="file" accept="image/*" hidden onChange={handleLogoFile}/>
           <span style={{fontSize:30}}>{logoUploading?"⏳":"📰"}</span>
           <span style={{fontSize:12,fontWeight:700,color:"var(--txt-md)"}}>
-            {logoUploading?"Uploading to Cloud...":"UPLOAD YOUR CHANNEL LOGO"}
+            {logoUploading?"Uploading to Cloud...":"UPLOAD DIFFERENT LOGO"}
           </span>
           <span style={{fontSize:10,color:"var(--txt-lo)"}}>
             {logoCloudUrl?"☁️ Saved on Cloudinary":"PNG with transparent background recommended"}
