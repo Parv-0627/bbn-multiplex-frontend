@@ -11,6 +11,7 @@ const SAMPLE_CAPTION = "दिल्ली-NCR में बारिश का 
 // ══════════════════════════════════════════════════════════════
 const CLD_CLOUD  = "dlzowheen";
 const CLD_PRESET = "BBN Multiplex";
+// eslint-disable-next-line no-unused-vars
 const CLD_BASE   = `https://res.cloudinary.com/${CLD_CLOUD}/image/upload`;
 
 // Upload file to Cloudinary, returns secure_url (original quality)
@@ -221,6 +222,7 @@ function drawCard(canvas,photoImg,logoImg,cfg){
   const FOOTER=24*sc;
 
   function CR(x,y,w,h,fn){ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();fn();ctx.restore();}
+  // eslint-disable-next-line no-unused-vars
   function CRR(x,y,w,h,r,fn){ctx.save();ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,w,h,r);else ctx.rect(x,y,w,h);ctx.clip();fn();ctx.restore();}
 
   function dPhoto(x,y,w,h){
@@ -1172,7 +1174,7 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
         <input
           type="range" min={min} max={max} step={step} value={value}
           onChange={e=>setter(Number(e.target.value))}
-          style={{flex:1,accentColor:"#CC0000",cursor:"pointer",height:4}}
+          style={{flex:1,accentColor:"#CC0000",cursor:"pointer"}}
         />
         <span style={{fontSize:10,color:"var(--txt-md)",minWidth:36,textAlign:"right",fontFamily:"monospace"}}>{value}{unit}</span>
       </div>

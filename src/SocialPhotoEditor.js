@@ -91,8 +91,6 @@ function drawCanvas(canvas, photoImg, logoImg, cfg) {
   const iW = photoImg.naturalWidth||1, iH = photoImg.naturalHeight||1;
   const scale = Math.max(W/iW, H/iH);
   const dW = iW*scale, dH = iH*scale;
-  const ox = (W-dW)/2 + (cfg.panX||0)*sc;
-  const oy = (H-dH)/2 + (cfg.panY||0)*sc;
   ctx.translate(W/2, H/2);
   ctx.rotate(((cfg.rotation||0)*Math.PI)/180);
   ctx.scale(cfg.flipH?-1:1, cfg.flipV?-1:1);
@@ -308,6 +306,7 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
   const [downloading, setDownloading] = useState(false);
   const [toast,       setToast]       = useState("");
   const [showPreview, setShowPreview] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [cropMode,    setCropMode]    = useState(false);
 
   const canvasRef = useRef(null);
@@ -437,14 +436,13 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
 
   const isMobile = typeof window!=="undefined" && window.innerWidth<=768;
 
-  // Shared slider style
-  // Smooth range slider — same as SocialVideoEditor
+  // Smooth range slider
   const SlRow=({label,val,set,min,max,step=1,unit=""})=>(
-    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-      <span style={{fontSize:10,color:"var(--txt-lo)",minWidth:72,flexShrink:0,fontWeight:600}}>{label}</span>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+      <span style={{fontSize:10,color:"var(--txt-lo)",minWidth:68,flexShrink:0,fontWeight:600}}>{label}</span>
       <input type="range" min={min} max={max} step={step} value={val}
         onChange={e=>set(Number(e.target.value))}
-        style={{flex:1,accentColor:"#CC0000",cursor:"pointer",height:4}}/>
+        style={{flex:1,accentColor:"#CC0000",cursor:"pointer"}}/>
       <span style={{fontSize:10,color:"var(--txt-md)",minWidth:36,textAlign:"right",fontFamily:"monospace"}}>{val}{unit}</span>
     </div>
   );
@@ -769,68 +767,119 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
         </div>
       )}
 
-      {/* ── LEFT: Canvas area (like PhotoNewsmaker) ── */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      {/* ══════════════════════════════════════════════
+          MOBILE LAYOUT — canvas top, controls bottom
+          ══════════════════════════════════════════════ */}
+      {isMobile ? (
+        <>
+          {/* Top: Canvas area — fixed compact height */}
+          <div style={{display:"flex",flexDirection:"column",background:"#060608",flexShrink:0}}>
+            {/* Format ribbon */}
+            <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",padding:"4px 8px",gap:4,overflowX:"auto",flexShrink:0,WebkitOverflowScrolling:"touch"}}>
+              {FORMATS.map(f=>(
+                <button key={f.id} onClick={()=>setFormat(f.id)} style={{
+                  padding:"3px 8px",borderRadius:4,fontSize:9,fontWeight:700,cursor:"pointer",flexShrink:0,
+                  whiteSpace:"nowrap",
+                  background:format===f.id?"rgba(204,34,0,0.2)":"var(--bg-card)",
+                  color:format===f.id?"#fff":"var(--txt-lo)",
+                  border:format===f.id?"1.5px solid var(--red)":"1px solid var(--border)"
+                }}>{f.icon} {f.label} <span style={{opacity:0.6}}>{f.ratio}</span></button>
+              ))}
+            </div>
+            {/* Canvas */}
+            <div style={{display:"flex",justifyContent:"center",alignItems:"center",padding:"6px 8px",background:"#060608"}}>
+              <canvas ref={canvasRef} width={fmt.w} height={fmt.h}
+                style={{height:"190px",maxWidth:"100%",objectFit:"contain",borderRadius:4,boxShadow:"0 4px 24px rgba(0,0,0,0.9)"}}/>
+            </div>
+            {/* Download button */}
+            <div style={{display:"flex",gap:6,margin:"0 10px 6px",}}>
+              <button onClick={()=>setShowPreview(true)} style={{flex:1,height:36,borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",background:"rgba(212,165,32,0.1)",border:"1px solid #D4A520",color:"#D4A520"}}>👁 Preview</button>
+              <button onClick={downloadPNG} disabled={downloading} style={{flex:2,height:36,borderRadius:6,fontSize:12,fontWeight:800,cursor:"pointer",background:"linear-gradient(135deg,#CC0000,#880000)",border:"none",color:"#fff"}}>
+                {downloading?"⏳ Saving...":"⬇️ Download PNG"}
+              </button>
+            </div>
+          </div>
 
-        {/* Format selector ribbon */}
-        <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",padding:"5px 8px",gap:4,overflowX:"auto",flexShrink:0,WebkitOverflowScrolling:"touch"}}>
-          {FORMATS.map(f=>(
-            <button key={f.id} onClick={()=>setFormat(f.id)} style={{
-              padding:"4px 10px",borderRadius:5,fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0,
-              display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap",
-              background:format===f.id?"rgba(204,34,0,0.2)":"var(--bg-card)",
-              color:format===f.id?"#fff":"var(--txt-lo)",
-              border:format===f.id?"1.5px solid var(--red)":"1px solid var(--border)"
-            }}>{f.icon} {f.label} <span style={{fontSize:9,opacity:0.6}}>{f.ratio}</span></button>
-          ))}
-        </div>
+          {/* Bottom: Tabs + Scrollable controls */}
+          <div style={{flex:1,display:"flex",flexDirection:"column",background:"var(--bg-panel)",borderTop:"2px solid var(--border)",overflow:"hidden"}}>
+            {/* Tab bar */}
+            <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+              {TABS.map(t=>(
+                <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{
+                  flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,
+                  padding:"7px 2px",cursor:"pointer",border:"none",
+                  background:activeTab===t.id?"rgba(204,34,0,0.12)":"transparent",
+                  borderBottom:activeTab===t.id?"2px solid var(--red)":"2px solid transparent",
+                  transition:"all 0.15s"
+                }}>
+                  <span style={{fontSize:16}}>{t.icon}</span>
+                  <span style={{fontSize:8,fontWeight:700,color:activeTab===t.id?"#fff":"var(--txt-lo)",letterSpacing:0.5}}>{t.label}</span>
+                </button>
+              ))}
+            </div>
+            {/* Scrollable content */}
+            <div style={{flex:1,overflowY:"auto",padding:"10px 12px",WebkitOverflowScrolling:"touch"}}>
+              {renderTab()}
+            </div>
+          </div>
+        </>
+      ) : (
+        /* ══════════════════════════════════════════════
+           DESKTOP LAYOUT — canvas left, controls right
+           ══════════════════════════════════════════════ */
+        <>
+          {/* LEFT: Canvas */}
+          <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            {/* Format ribbon */}
+            <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",padding:"5px 8px",gap:4,overflowX:"auto",flexShrink:0,WebkitOverflowScrolling:"touch"}}>
+              {FORMATS.map(f=>(
+                <button key={f.id} onClick={()=>setFormat(f.id)} style={{
+                  padding:"4px 10px",borderRadius:5,fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0,
+                  display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap",
+                  background:format===f.id?"rgba(204,34,0,0.2)":"var(--bg-card)",
+                  color:format===f.id?"#fff":"var(--txt-lo)",
+                  border:format===f.id?"1.5px solid var(--red)":"1px solid var(--border)"
+                }}>{f.icon} {f.label} <span style={{fontSize:9,opacity:0.6}}>{f.ratio}</span></button>
+              ))}
+            </div>
+            {/* Canvas */}
+            <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",padding:"8px",background:"#060608"}}>
+              <canvas ref={canvasRef} width={fmt.w} height={fmt.h} style={{
+                maxWidth:"100%",maxHeight:"100%",
+                objectFit:"contain",borderRadius:3,
+                boxShadow:"0 8px 48px rgba(0,0,0,0.95)"
+              }}/>
+            </div>
+            {/* Action row */}
+            <div style={{background:"var(--bg-base)",borderTop:"1px solid var(--border)",padding:"6px 10px",display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+              <span style={{fontSize:10,color:"var(--txt-lo)",flex:1}}>{fmt.w}×{fmt.h} • {fmt.platform}</span>
+              <button onClick={()=>setShowPreview(true)} style={{height:32,padding:"0 14px",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer",background:"rgba(212,165,32,0.1)",border:"1px solid #D4A520",color:"#D4A520"}}>👁 Preview</button>
+              <button onClick={downloadPNG} disabled={downloading} style={{height:32,padding:"0 16px",borderRadius:5,fontSize:11,fontWeight:800,cursor:"pointer",background:"linear-gradient(135deg,#CC0000,#880000)",border:"none",color:"#fff"}}>
+                {downloading?"⏳":"⬇️"} PNG
+              </button>
+            </div>
+          </div>
 
-        {/* Canvas — centered, max size */}
-        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",padding:"8px",background:"#060608"}}>
-          <canvas ref={canvasRef} width={fmt.w} height={fmt.h} style={{
-            maxWidth:"100%",maxHeight:"100%",
-            objectFit:"contain",borderRadius:3,
-            boxShadow:"0 8px 48px rgba(0,0,0,0.95)"
-          }}/>
-        </div>
-
-        {/* Action buttons row */}
-        <div style={{background:"var(--bg-base)",borderTop:"1px solid var(--border)",padding:"6px 10px",display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-          <span style={{fontSize:10,color:"var(--txt-lo)",flex:1}}>{fmt.w}×{fmt.h} • {fmt.platform}</span>
-          <button onClick={()=>setShowPreview(true)} style={{height:32,padding:"0 14px",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer",background:"rgba(212,165,32,0.1)",border:"1px solid #D4A520",color:"#D4A520"}}>👁 Preview</button>
-          <button onClick={downloadPNG} disabled={downloading} style={{height:32,padding:"0 16px",borderRadius:5,fontSize:11,fontWeight:800,cursor:"pointer",background:"linear-gradient(135deg,#CC0000,#880000)",border:"none",color:"#fff"}}>
-            {downloading?"⏳":"⬇️"} PNG
-          </button>
-        </div>
-      </div>
-
-      {/* ── RIGHT: Controls panel (like PhotoNewsmaker) ── */}
-      <div style={{
-        width:isMobile?"100%":"300px",flexShrink:0,
-        background:"var(--bg-panel)",borderLeft:"1px solid var(--border)",
-        display:"flex",flexDirection:"column",overflow:"hidden"
-      }}>
-        {/* Tab bar */}
-        <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",flexShrink:0}}>
-          {TABS.map(t=>(
-            <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{
-              flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,
-              padding:"7px 2px",cursor:"pointer",border:"none",
-              background:activeTab===t.id?"rgba(204,34,0,0.12)":"transparent",
-              borderBottom:activeTab===t.id?"2px solid var(--red)":"2px solid transparent",
-              transition:"all 0.15s"
-            }}>
-              <span style={{fontSize:16}}>{t.icon}</span>
-              <span style={{fontSize:8,fontWeight:700,color:activeTab===t.id?"#fff":"var(--txt-lo)",letterSpacing:0.5}}>{t.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Scrollable tab content */}
-        <div style={{flex:1,overflowY:"auto",padding:"10px 12px",WebkitOverflowScrolling:"touch"}}>
-          {renderTab()}
-        </div>
-      </div>
-    </div>
-  );
+          {/* RIGHT: Controls */}
+          <div style={{width:"300px",flexShrink:0,background:"var(--bg-panel)",borderLeft:"1px solid var(--border)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+              {TABS.map(t=>(
+                <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{
+                  flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,
+                  padding:"7px 2px",cursor:"pointer",border:"none",
+                  background:activeTab===t.id?"rgba(204,34,0,0.12)":"transparent",
+                  borderBottom:activeTab===t.id?"2px solid var(--red)":"2px solid transparent",
+                  transition:"all 0.15s"
+                }}>
+                  <span style={{fontSize:16}}>{t.icon}</span>
+                  <span style={{fontSize:8,fontWeight:700,color:activeTab===t.id?"#fff":"var(--txt-lo)",letterSpacing:0.5}}>{t.label}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{flex:1,overflowY:"auto",padding:"10px 12px",WebkitOverflowScrolling:"touch"}}>
+              {renderTab()}
+            </div>
+          </div>
+        </>
+      )}
 }
