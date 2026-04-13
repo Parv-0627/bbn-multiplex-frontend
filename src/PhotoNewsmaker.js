@@ -1164,90 +1164,17 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
     card:{background:"var(--bg-card)",border:"1px solid var(--border)",borderRadius:6,padding:10,marginBottom:8},
   };
 
-  // ── Circular Knob Slider — drag to change value ──────────────
+  // ── Smooth Range Slider ──────────────────────────────────────
   function Sl({label, value, setter, min, max, unit="", step=1}){
-    const dragging   = useRef(false);
-    const startY     = useRef(0);
-    const startVal   = useRef(value);
-    const knobWrapRef= useRef(null);
-    const range      = max - min;
-
-    const pct   = (value - min) / range;
-    const angle = -135 + pct * 270;
-
-    function clamp(v){ return Math.min(max, Math.max(min, v)); }
-    function snap(v){ return Math.round(v / step) * step; }
-
-    // Attach global move/up on window so drag works outside element
-    useEffect(() => {
-      function onMove(e){
-        if(!dragging.current) return;
-        const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-        const dy = startY.current - clientY;
-        const delta = (dy / 80) * range;
-        setter(clamp(snap(startVal.current + delta)));
-      }
-      function onUp(){
-        if(dragging.current) dragging.current = false;
-      }
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup",   onUp);
-      window.addEventListener("touchmove",   onMove, { passive:false });
-      window.addEventListener("touchend",    onUp);
-      return () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup",   onUp);
-        window.removeEventListener("touchmove",   onMove);
-        window.removeEventListener("touchend",    onUp);
-      };
-    // eslint-disable-next-line
-    }, [min, max, step, range, setter]);
-
-    function onPointerDown(e){
-      e.preventDefault();
-      dragging.current  = true;
-      startY.current    = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-      startVal.current  = value;
-    }
-
-    const cx=22, cy=22, trackR=18, knobR=14;
-    function polar(deg, r){
-      const rad=(deg-90)*Math.PI/180;
-      return {x:cx+r*Math.cos(rad), y:cy+r*Math.sin(rad)};
-    }
-    const sp=polar(-135,trackR), ap=polar(angle,trackR);
-    const bigArc=(angle-(-135))>180?1:0;
-    function arcD(a1,a2,r){
-      const p1=polar(a1,r),p2=polar(a2,r);
-      return `M${p1.x} ${p1.y} A${r} ${r} 0 ${(a2-a1)>180?1:0} 1 ${p2.x} ${p2.y}`;
-    }
-    const tickEnd=polar(angle,knobR-3);
-
     return (
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-        {/* Knob */}
-        <div
-          ref={knobWrapRef}
-          onPointerDown={onPointerDown}
-          onTouchStart={e=>{e.preventDefault();dragging.current=true;startY.current=e.touches[0].clientY;startVal.current=value;}}
-          style={{width:44,height:44,flexShrink:0,cursor:"ns-resize",userSelect:"none",touchAction:"none"}}
-        >
-          <svg width="44" height="44">
-            <path d={arcD(-135,135,trackR)} fill="none" stroke="#2a2a35" strokeWidth="3.5" strokeLinecap="round"/>
-            <path d={`M${sp.x} ${sp.y} A${trackR} ${trackR} 0 ${bigArc} 1 ${ap.x} ${ap.y}`}
-              fill="none" stroke="#CC0000" strokeWidth="3.5" strokeLinecap="round"/>
-            <circle cx={cx} cy={cy} r={knobR} fill="#1e1e26" stroke="#3a3a48" strokeWidth="1.5"/>
-            <line x1={cx} y1={cy} x2={tickEnd.x} y2={tickEnd.y} stroke="#D4A520" strokeWidth="2.5" strokeLinecap="round"/>
-          </svg>
-        </div>
-        {/* Fine-tune range */}
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:9,color:"var(--txt-lo)",fontWeight:600,letterSpacing:0.5,marginBottom:2}}>{label}</div>
-          <input type="range" min={min} max={max} step={step} value={value}
-            onChange={e=>setter(Number(e.target.value))}
-            style={{width:"100%",accentColor:"#CC0000",cursor:"pointer"}}/>
-        </div>
-        <span style={{fontSize:10,color:"var(--txt-md)",minWidth:34,textAlign:"right",fontFamily:"monospace"}}>{value}{unit}</span>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+        <span style={{fontSize:10,color:"var(--txt-lo)",minWidth:72,flexShrink:0,fontWeight:600}}>{label}</span>
+        <input
+          type="range" min={min} max={max} step={step} value={value}
+          onChange={e=>setter(Number(e.target.value))}
+          style={{flex:1,accentColor:"#CC0000",cursor:"pointer",height:4}}
+        />
+        <span style={{fontSize:10,color:"var(--txt-md)",minWidth:36,textAlign:"right",fontFamily:"monospace"}}>{value}{unit}</span>
       </div>
     );
   }
