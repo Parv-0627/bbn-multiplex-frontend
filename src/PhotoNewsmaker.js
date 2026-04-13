@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { saveUserData, loadUserData } from "./firebase";
 import { SAMPLE_NEWS_IMAGE } from "./sampleImage";
+import { translateText } from "./bbn-text-utils";
 
 const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const SAMPLE_CAPTION = "दिल्ली-NCR में बारिश का कहर, मौसम विभाग ने दी चेतावनी!";
@@ -449,7 +450,7 @@ function drawCard(canvas,photoImg,logoImg,cfg){
 export default function PhotoNewsmaker({ user = null, globalLogo = null }){
   const [step,      setStep]      = useState("template");
   const [template,  setTemplate]  = useState("classic");
-  const [headHTML,  setHeadHTML]  = useState("Write your headline here");
+  const [headHTML,  setHeadHTML]  = useState(SAMPLE_CAPTION);
   const [canvasFont,  setCanvasFont]  = useState("Arial");
   const [canvasColor, setCanvasColor] = useState("#111111");
   const [canvasBold,  setCanvasBold]  = useState(true);
@@ -494,6 +495,7 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
   const [rawInput,  setRawInput]  = useState("");
   const [showTranslate,setShowTranslate]=useState(false);
   const [translating,setTranslating]=useState(false);
+  const [noSelWarn,setNoSelWarn]=useState(false);
   const [showPreview,setShowPreview]=useState(false);
   const [photoUploading,setPhotoUploading]=useState(false);
   const [photoUploadPct,setPhotoUploadPct]=useState(0);
@@ -501,10 +503,11 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
   const [photoCloudUrl,setPhotoCloudUrl]=useState(null);
   const [logoCloudUrl,setLogoCloudUrl]=useState(null);
 
-  const canvasRef  = useRef(null);
-  const photoRef   = useRef(null);
-  const logoRef    = useRef(null);
-  const hlBoxRef   = useRef(null);
+  const canvasRef      = useRef(null);
+  const photoRef       = useRef(null);
+  const logoRef        = useRef(null);
+  const hlBoxRef       = useRef(null);
+  const lastSetHTML    = useRef(SAMPLE_CAPTION); // init with sample caption
 
   // eslint-disable-next-line no-unused-vars
   const headSegs = parseSegs(headHTML);
@@ -538,19 +541,22 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
 
   // ── Load sample/demo image on first open (no saved photo) ────
   useEffect(() => {
-    // Only load sample if user has no saved photo
     const saved = lsLoad();
-    if (saved?.photoCloudUrl || saved?.photoPrev) return; // user already has a photo
-    // Load the sample image as default
+    if (saved?.photoCloudUrl || saved?.photoPrev) return;
+    // Load sample image
     const img = new Image();
     img.onload = () => {
       photoRef.current = img;
       setPhotoPrev(SAMPLE_NEWS_IMAGE);
-      // Also pre-fill headline with sample caption
-      setHeadHTML(SAMPLE_CAPTION);
       redraw();
     };
     img.src = SAMPLE_NEWS_IMAGE;
+    // Set headline — state already initialized with SAMPLE_CAPTION
+    // But also sync to DOM box if already mounted
+    if (hlBoxRef.current) {
+      hlBoxRef.current.innerHTML = SAMPLE_CAPTION;
+      lastSetHTML.current = SAMPLE_CAPTION;
+    }
   // eslint-disable-next-line
   }, []);
 
@@ -630,8 +636,6 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
     } catch(err) { console.warn("Cloudinary logo upload failed:", err.message); }
     setLogoUploading(false);
   }
-
-  const lastSetHTML = useRef("");
 
   // ── Save to localStorage + Firestore on every change ────────
   useEffect(()=>{
@@ -732,6 +736,11 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
       b.innerHTML = headHTML;
       lastSetHTML.current = headHTML;
     }
+    // On first mount — if box is empty, fill with current headHTML (sample caption)
+    if(!b.innerHTML || b.innerHTML === "<br>"){
+      b.innerHTML = headHTML;
+      lastSetHTML.current = headHTML;
+    }
   },[headHTML]);
 
   async function doTranslate(lang){
@@ -740,11 +749,10 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
     if(!textToTranslate) return;
     setTranslating(true);
     try{
-      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${lang}&dt=t&q=${encodeURIComponent(textToTranslate)}`;
-      const d = await (await fetch(url)).json();
-      const txt = d[0].map(x=>x[0]).join('');
-      if(hlBoxRef.current){hlBoxRef.current.innerText = txt;}
+      const txt = await translateText(textToTranslate, lang);
+      if(hlBoxRef.current){ hlBoxRef.current.innerText = txt; }
       setHeadHTML(txt);
+      lastSetHTML.current = txt;
       setShowTranslate(false);
     }catch(e){
       alert("Translate failed. Check internet connection.");
@@ -752,21 +760,66 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
     setTranslating(false);
   }
 
+  // ── Save current selection (range) before button click loses focus ──
+  const savedRangeRef = useRef(null);
+
+  function saveSelection(){
+    const sel = window.getSelection();
+    if(sel && sel.rangeCount > 0){
+      savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+    }
+  }
+
+  function restoreSelection(){
+    const b = hlBoxRef.current; if(!b) return false;
+    b.focus();
+    const range = savedRangeRef.current;
+    if(!range) return false;
+    const sel = window.getSelection();
+    if(sel){ sel.removeAllRanges(); sel.addRange(range); }
+    return true;
+  }
+
+  function hasSelection(){
+    const range = savedRangeRef.current;
+    if(!range) return false;
+    return !range.collapsed && range.toString().length > 0;
+  }
+
   function execCmd(cmd, value=null){
     const b = hlBoxRef.current; if(!b) return;
-    b.focus();
+    // Restore saved selection first (button click loses focus)
+    restoreSelection();
+    if(!hasSelection()){
+      // No text selected — show warning, do nothing
+      setNoSelWarn(true);
+      setTimeout(()=>setNoSelWarn(false), 2000);
+      return;
+    }
     try { document.execCommand(cmd, false, value); } catch(e) {}
     const html = b.innerHTML;
     lastSetHTML.current = html;
     setHeadHTML(html);
+    savedRangeRef.current = null; // clear after applying
   }
 
   function resetColors(){
     const b = hlBoxRef.current; if(!b) return;
-    const plain = b.innerText || b.textContent || "";
-    b.innerHTML = plain;
-    lastSetHTML.current = plain;
-    setHeadHTML(plain);
+    restoreSelection();
+    if(hasSelection()){
+      // Only remove format from selected text
+      try { document.execCommand("removeFormat", false, null); } catch(e){}
+      const html = b.innerHTML;
+      lastSetHTML.current = html;
+      setHeadHTML(html);
+      savedRangeRef.current = null;
+    } else {
+      // No selection — clear ALL formatting (strip all HTML tags)
+      const plain = b.innerText || b.textContent || "";
+      b.innerHTML = plain;
+      lastSetHTML.current = plain;
+      setHeadHTML(plain);
+    }
   }
 
   function resetLogo(){logoRef.current=null;setLogoPrev(null);redraw();}
@@ -1106,6 +1159,9 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
               lastSetHTML.current = html;
               setHeadHTML(html);
             }}
+            onMouseUp={saveSelection}
+            onKeyUp={saveSelection}
+            onTouchEnd={saveSelection}
             style={{
               background:"var(--bg-deep)",border:"2px solid var(--accent)",borderRadius:6,
               padding:"10px 12px",minHeight:70,fontSize:16,fontWeight:700,
@@ -1114,6 +1170,17 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
               userSelect:"text",WebkitUserSelect:"text",marginBottom:8,
               outline:"none"
             }}/>
+
+          {/* Selection warning */}
+          {noSelWarn && (
+            <div style={{
+              background:"rgba(204,0,0,0.15)",border:"1px solid rgba(204,0,0,0.4)",
+              borderRadius:5,padding:"6px 10px",fontSize:11,color:"#ff6b6b",
+              marginBottom:6,display:"flex",alignItems:"center",gap:6
+            }}>
+              ⚠️ <strong>Pehle text select karo</strong> box mein, phir format apply karo
+            </div>
+          )}
           <div style={{display:"flex",gap:6}}>
             <button onClick={()=>{
               const b = hlBoxRef.current;
@@ -1127,8 +1194,7 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
               background:showTranslate?"rgba(66,133,244,0.2)":"rgba(66,133,244,0.08)",
               color:"#4285F4",border:"1px solid #4285F4"
             }}>🌐 Translate</button>
-          </div>
-          {showTranslate&&(
+          </div>          {showTranslate&&(
             <div style={{marginTop:8,background:"var(--bg-deep)",borderRadius:5,padding:8,border:"1px solid var(--border)"}}>
               <div style={{fontSize:10,color:"var(--txt-md)",marginBottom:6}}>Type text above → select language → translate:</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
@@ -1145,8 +1211,13 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
         </div>
         <SecHdr icon="🎨" label="Text Formatting"/>
         <div style={V.card}>
-          <div style={{fontSize:10,color:"var(--txt-lo)",marginBottom:8,lineHeight:1.5,background:"var(--bg-deep)",borderRadius:4,padding:"5px 8px"}}>
-            💡 Select text in box above → apply format below
+          <div style={{
+            fontSize:11,color:"#4caf50",marginBottom:8,lineHeight:1.5,
+            background:"rgba(76,175,80,0.08)",borderRadius:4,padding:"6px 10px",
+            border:"1px solid rgba(76,175,80,0.2)"
+          }}>
+            💡 <strong>Pehle text select karo</strong> box mein (drag/long press) → phir format apply karo.<br/>
+            <span style={{fontSize:10,color:"var(--txt-lo)"}}>Sirf selected text pe effect aayega — poore text pe nahi.</span>
           </div>
           <div style={{...V.sub,marginTop:0}}>Font Family</div>
           <select value={canvasFont} onChange={e=>{
