@@ -864,7 +864,19 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
   // eslint-disable-next-line
   }, []);
 
-  const redraw = useCallback(()=>{
+  // ── Auto-set text color based on template background ─────────
+  useEffect(()=>{
+    const darkTemplates = ["splitdark","fullbleed","gold","ticker","redbreak","darkdrama","cinematic","neonpulse","election"];
+    const lightTemplates = ["classic","newspaper","magazine"];
+    if(darkTemplates.includes(template)){
+      setCanvasColor("#ffffff");
+      setHlColor("#ffffff");
+    } else if(lightTemplates.includes(template)){
+      setCanvasColor("#111111");
+      setHlColor("#111111");
+    }
+  // eslint-disable-next-line
+  },[template]);
     const c=canvasRef.current;if(!c)return;
     const plain = hlBoxRef.current
       ? (hlBoxRef.current.innerText||hlBoxRef.current.textContent||"").trim()
@@ -1079,32 +1091,34 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
     b.focus();
     const range = savedRangeRef.current;
     if(!range) return false;
-    const sel = window.getSelection();
-    if(sel){ sel.removeAllRanges(); sel.addRange(range); }
-    return true;
+    try {
+      const sel = window.getSelection();
+      if(sel){ sel.removeAllRanges(); sel.addRange(range); }
+      return true;
+    } catch(e){ return false; }
   }
 
   function hasSelection(){
     const range = savedRangeRef.current;
     if(!range) return false;
-    return !range.collapsed && range.toString().length > 0;
+    return range.toString().length > 0;
   }
 
   function execCmd(cmd, value=null){
     const b = hlBoxRef.current; if(!b) return;
-    // Restore saved selection first (button click loses focus)
-    restoreSelection();
     if(!hasSelection()){
-      // No text selected — show warning, do nothing
       setNoSelWarn(true);
-      setTimeout(()=>setNoSelWarn(false), 2000);
+      setTimeout(()=>setNoSelWarn(false), 2500);
       return;
     }
+    restoreSelection();
     try { document.execCommand(cmd, false, value); } catch(e) {}
     const html = b.innerHTML;
     lastSetHTML.current = html;
     setHeadHTML(html);
-    savedRangeRef.current = null; // clear after applying
+    // Re-save selection after command (selection may have changed)
+    const sel = window.getSelection();
+    if(sel && sel.rangeCount > 0) savedRangeRef.current = sel.getRangeAt(0).cloneRange();
   }
 
   function resetColors(){
@@ -1150,95 +1164,88 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
 
   // ── Circular Knob Slider — drag to change value ──────────────
   function Sl({label, value, setter, min, max, unit="", step=1}){
-    const knobRef = useRef(null);
-    const dragging = useRef(false);
-    const startY = useRef(0);
-    const startVal = useRef(value);
-    const range = max - min;
+    const dragging   = useRef(false);
+    const startY     = useRef(0);
+    const startVal   = useRef(value);
+    const knobWrapRef= useRef(null);
+    const range      = max - min;
 
-    // Convert value to angle (−135° to +135°, total 270°)
-    const pct = (value - min) / range;
+    const pct   = (value - min) / range;
     const angle = -135 + pct * 270;
 
     function clamp(v){ return Math.min(max, Math.max(min, v)); }
-    function snapToStep(v){ return Math.round(v / step) * step; }
+    function snap(v){ return Math.round(v / step) * step; }
+
+    // Attach global move/up on window so drag works outside element
+    useEffect(() => {
+      function onMove(e){
+        if(!dragging.current) return;
+        const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+        const dy = startY.current - clientY;
+        const delta = (dy / 80) * range;
+        setter(clamp(snap(startVal.current + delta)));
+      }
+      function onUp(){
+        if(dragging.current) dragging.current = false;
+      }
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup",   onUp);
+      window.addEventListener("touchmove",   onMove, { passive:false });
+      window.addEventListener("touchend",    onUp);
+      return () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup",   onUp);
+        window.removeEventListener("touchmove",   onMove);
+        window.removeEventListener("touchend",    onUp);
+      };
+    // eslint-disable-next-line
+    }, [min, max, step, range, setter]);
 
     function onPointerDown(e){
       e.preventDefault();
-      dragging.current = true;
-      startY.current = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-      startVal.current = value;
-      knobRef.current?.setPointerCapture?.(e.pointerId);
+      dragging.current  = true;
+      startY.current    = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+      startVal.current  = value;
     }
-    function onPointerMove(e){
-      if(!dragging.current) return;
-      const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-      const dy = startY.current - clientY; // drag up = increase
-      const delta = (dy / 100) * range;
-      setter(clamp(snapToStep(startVal.current + delta)));
-    }
-    function onPointerUp(){ dragging.current = false; }
 
-    const trackR = 18;
-    const knobR = 14;
-    const cx = 22; const cy = 22;
-    // Track arc: from −135° to +135°
-    function polarPoint(angleDeg, r){
-      const rad = (angleDeg - 90) * Math.PI / 180;
-      return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+    const cx=22, cy=22, trackR=18, knobR=14;
+    function polar(deg, r){
+      const rad=(deg-90)*Math.PI/180;
+      return {x:cx+r*Math.cos(rad), y:cy+r*Math.sin(rad)};
     }
-    const startPt = polarPoint(-135, trackR);
-    const endPt   = polarPoint(135,  trackR);
-    const activePt= polarPoint(angle, trackR);
-    // SVG arc for track
-    function arcPath(a1, a2, r){
-      const p1 = polarPoint(a1, r);
-      const p2 = polarPoint(a2, r);
-      const large = (a2 - a1) > 180 ? 1 : 0;
-      return `M ${p1.x} ${p1.y} A ${r} ${r} 0 ${large} 1 ${p2.x} ${p2.y}`;
+    const sp=polar(-135,trackR), ap=polar(angle,trackR);
+    const bigArc=(angle-(-135))>180?1:0;
+    function arcD(a1,a2,r){
+      const p1=polar(a1,r),p2=polar(a2,r);
+      return `M${p1.x} ${p1.y} A${r} ${r} 0 ${(a2-a1)>180?1:0} 1 ${p2.x} ${p2.y}`;
     }
-    const activeLarge = (angle - (-135)) > 180 ? 1 : 0;
+    const tickEnd=polar(angle,knobR-3);
 
     return (
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-        {/* Knob SVG */}
-        <div style={{ position:"relative", width:44, height:44, flexShrink:0, cursor:"ns-resize", userSelect:"none", touchAction:"none" }}
-          ref={knobRef}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+        {/* Knob */}
+        <div
+          ref={knobWrapRef}
           onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerLeave={onPointerUp}
+          onTouchStart={e=>{e.preventDefault();dragging.current=true;startY.current=e.touches[0].clientY;startVal.current=value;}}
+          style={{width:44,height:44,flexShrink:0,cursor:"ns-resize",userSelect:"none",touchAction:"none"}}
         >
-          <svg width="44" height="44" style={{ overflow:"visible" }}>
-            {/* Background track */}
-            <path d={arcPath(-135, 135, trackR)} fill="none" stroke="#2a2a35" strokeWidth="3" strokeLinecap="round"/>
-            {/* Active track */}
-            <path
-              d={`M ${startPt.x} ${startPt.y} A ${trackR} ${trackR} 0 ${activeLarge} 1 ${activePt.x} ${activePt.y}`}
-              fill="none" stroke="var(--red,#CC0000)" strokeWidth="3" strokeLinecap="round"
-            />
-            {/* Knob circle */}
+          <svg width="44" height="44">
+            <path d={arcD(-135,135,trackR)} fill="none" stroke="#2a2a35" strokeWidth="3.5" strokeLinecap="round"/>
+            <path d={`M${sp.x} ${sp.y} A${trackR} ${trackR} 0 ${bigArc} 1 ${ap.x} ${ap.y}`}
+              fill="none" stroke="#CC0000" strokeWidth="3.5" strokeLinecap="round"/>
             <circle cx={cx} cy={cy} r={knobR} fill="#1e1e26" stroke="#3a3a48" strokeWidth="1.5"/>
-            {/* Tick indicator */}
-            <line
-              x1={cx} y1={cy - 5}
-              x2={cx + 7 * Math.cos((angle - 90) * Math.PI / 180)}
-              y2={cy + 7 * Math.sin((angle - 90) * Math.PI / 180)}
-              stroke="#D4A520" strokeWidth="2" strokeLinecap="round"
-            />
+            <line x1={cx} y1={cy} x2={tickEnd.x} y2={tickEnd.y} stroke="#D4A520" strokeWidth="2.5" strokeLinecap="round"/>
           </svg>
         </div>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:9, color:"var(--txt-lo)", fontWeight:600, letterSpacing:0.5, marginBottom:1 }}>{label}</div>
-          {/* Also a thin range input as fallback / fine-tune */}
+        {/* Fine-tune range */}
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:9,color:"var(--txt-lo)",fontWeight:600,letterSpacing:0.5,marginBottom:2}}>{label}</div>
           <input type="range" min={min} max={max} step={step} value={value}
-            onChange={e => setter(Number(e.target.value))}
-            style={{ width:"100%", accentColor:"var(--red,#CC0000)", height:3, cursor:"pointer" }}
-          />
+            onChange={e=>setter(Number(e.target.value))}
+            style={{width:"100%",accentColor:"#CC0000",cursor:"pointer"}}/>
         </div>
-        <span style={{ fontSize:10, color:"var(--txt-md)", minWidth:34, textAlign:"right", fontFamily:"monospace" }}>
-          {value}{unit}
-        </span>
+        <span style={{fontSize:10,color:"var(--txt-md)",minWidth:34,textAlign:"right",fontFamily:"monospace"}}>{value}{unit}</span>
       </div>
     );
   }
@@ -1573,7 +1580,9 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
           <div style={V.sub}>Font Size (select text first)</div>
           <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
             {[{sz:1,label:"XS"},{sz:2,label:"S"},{sz:3,label:"M"},{sz:4,label:"L"},{sz:5,label:"XL"},{sz:6,label:"2X"},{sz:7,label:"3X"}].map(({sz,label})=>(
-              <button key={sz} onClick={()=>execCmd("fontSize",sz)} style={{
+              <button key={sz}
+                onMouseDown={e=>e.preventDefault()}
+                onClick={()=>execCmd("fontSize",sz)} style={{
                 flex:1,height:30,borderRadius:5,fontSize:10,fontWeight:700,cursor:"pointer",
                 background:"var(--bg-deep)",color:"var(--txt-md)",border:"1px solid var(--border)",transition:"all 0.12s"
               }}>{label}</button>
@@ -1581,20 +1590,28 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
           </div>
           <div style={V.sub}>Style</div>
           <div style={{display:"flex",gap:6,marginBottom:8}}>
-            <button onClick={()=>{execCmd("bold");setCanvasBold(v=>!v);}} style={{
+            <button
+              onMouseDown={e=>e.preventDefault()}
+              onClick={()=>{execCmd("bold");setCanvasBold(v=>!v);}} style={{
               flex:1,height:36,borderRadius:5,fontSize:14,fontWeight:900,cursor:"pointer",
               background:canvasBold?"rgba(212,165,32,0.2)":"var(--bg-deep)",
               color:canvasBold?"#D4A520":"var(--txt-hi)",
               border:canvasBold?"1.5px solid #D4A520":"1px solid var(--border)"}}>B</button>
-            <button onClick={()=>{execCmd("italic");setCanvasItalic(v=>!v);}} style={{
+            <button
+              onMouseDown={e=>e.preventDefault()}
+              onClick={()=>{execCmd("italic");setCanvasItalic(v=>!v);}} style={{
               flex:1,height:36,borderRadius:5,fontSize:14,fontWeight:700,fontStyle:"italic",cursor:"pointer",
               background:canvasItalic?"rgba(212,165,32,0.2)":"var(--bg-deep)",
               color:canvasItalic?"#D4A520":"var(--txt-hi)",
               border:canvasItalic?"1.5px solid #D4A520":"1px solid var(--border)"}}>I</button>
-            <button onClick={()=>execCmd("underline")} style={{
+            <button
+              onMouseDown={e=>e.preventDefault()}
+              onClick={()=>execCmd("underline")} style={{
               flex:1,height:36,borderRadius:5,fontSize:13,fontWeight:700,textDecoration:"underline",cursor:"pointer",
               background:"var(--bg-deep)",color:"var(--txt-hi)",border:"1px solid var(--border)"}}>U</button>
-            <button onClick={resetColors} style={{
+            <button
+              onMouseDown={e=>e.preventDefault()}
+              onClick={resetColors} style={{
               flex:1,height:36,borderRadius:5,fontSize:11,cursor:"pointer",
               background:"rgba(204,0,0,0.1)",color:"#CC0000",border:"1px solid rgba(204,0,0,0.3)"}}>✕ Clear</button>
           </div>
@@ -1608,7 +1625,9 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
               {c:"#FFFF00",label:"Yellow",fg:"#111"},{c:"#9C27B0",label:"Purple",fg:"#fff"},
               {c:"#00BCD4",label:"Cyan",fg:"#111"},
             ].map(({c,label,fg,bdr})=>(
-              <button key={c} onClick={()=>{setSelColor(c);setCanvasColor(c);execCmd("foreColor",c);}} style={{
+              <button key={c}
+                onMouseDown={e=>e.preventDefault()}
+                onClick={()=>{setSelColor(c);setCanvasColor(c);execCmd("foreColor",c);}} style={{
                 padding:"4px 8px",borderRadius:4,fontSize:10,fontWeight:700,cursor:"pointer",
                 background:c,color:fg,
                 border:canvasColor===c?"2.5px solid #fff":(bdr||"1.5px solid transparent"),
@@ -1623,8 +1642,8 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
             </label>
           </div>
           <div style={{display:"flex",gap:4}}>
-            <button onClick={()=>execCmd("undo")} style={{flex:1,height:28,borderRadius:4,fontSize:11,cursor:"pointer",background:"var(--bg-deep)",color:"var(--txt-md)",border:"1px solid var(--border)"}}>↩ Undo</button>
-            <button onClick={()=>execCmd("redo")} style={{flex:1,height:28,borderRadius:4,fontSize:11,cursor:"pointer",background:"var(--bg-deep)",color:"var(--txt-md)",border:"1px solid var(--border)"}}>↪ Redo</button>
+            <button onMouseDown={e=>e.preventDefault()} onClick={()=>execCmd("undo")} style={{flex:1,height:28,borderRadius:4,fontSize:11,cursor:"pointer",background:"var(--bg-deep)",color:"var(--txt-md)",border:"1px solid var(--border)"}}>↩ Undo</button>
+            <button onMouseDown={e=>e.preventDefault()} onClick={()=>execCmd("redo")} style={{flex:1,height:28,borderRadius:4,fontSize:11,cursor:"pointer",background:"var(--bg-deep)",color:"var(--txt-md)",border:"1px solid var(--border)"}}>↪ Redo</button>
           </div>
         </div>
         <SecHdr icon="⚙️" label="Other Fields"/>
