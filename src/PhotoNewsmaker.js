@@ -877,6 +877,8 @@ export default function PhotoNewsmaker({ user = null, globalLogo = null }){
     }
   // eslint-disable-next-line
   },[template]);
+
+  const redraw = useCallback(()=>{
     const c=canvasRef.current;if(!c)return;
     const plain = hlBoxRef.current
       ? (hlBoxRef.current.innerText||hlBoxRef.current.textContent||"").trim()
