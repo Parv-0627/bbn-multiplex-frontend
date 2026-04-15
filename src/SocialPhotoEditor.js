@@ -1,19 +1,322 @@
 // ═══════════════════════════════════════════════════════════════
 //  BBN MULTIPLEX — SocialPhotoEditor.js
 //  Instagram / Facebook / Twitter jaisi photo editing
-//  Replace kiya: SocialVideoEditor.js
+//  UPDATED: Format size presets → Visual News Templates
 // ═══════════════════════════════════════════════════════════════
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { saveUserData, loadUserData } from "./firebase";
 
-// ── Canvas size presets ───────────────────────────────────────
-const FORMATS = [
-  { id:"square",    label:"Square",         w:1080, h:1080, icon:"⬛", ratio:"1:1",  platform:"Instagram Post" },
-  { id:"portrait",  label:"Portrait",       w:1080, h:1350, icon:"📱", ratio:"4:5",  platform:"Instagram Feed" },
-  { id:"story",     label:"Story / Reel",   w:1080, h:1920, icon:"📲", ratio:"9:16", platform:"Instagram Story" },
-  { id:"landscape", label:"Landscape",      w:1920, h:1080, icon:"🖥️", ratio:"16:9", platform:"Facebook / YouTube" },
-  { id:"twitter",   label:"Twitter/X",      w:1200, h:675,  icon:"🐦", ratio:"16:9", platform:"Twitter / X" },
-  { id:"whatsapp",  label:"WhatsApp",        w:1080, h:1080, icon:"💬", ratio:"1:1",  platform:"WhatsApp Status" },
+// ── Canvas size options (compact ribbon only) ─────────────────
+const SIZES = [
+  { id:"square",    label:"Square",       w:1080, h:1080, icon:"⬛", ratio:"1:1"  },
+  { id:"portrait",  label:"Portrait",     w:1080, h:1350, icon:"📱", ratio:"4:5"  },
+  { id:"story",     label:"Story/Reel",   w:1080, h:1920, icon:"📲", ratio:"9:16" },
+  { id:"landscape", label:"Landscape",    w:1920, h:1080, icon:"🖥️", ratio:"16:9" },
+  { id:"twitter",   label:"Twitter/X",    w:1200, h:675,  icon:"🐦", ratio:"16:9" },
+  { id:"whatsapp",  label:"WhatsApp",     w:1080, h:1080, icon:"💬", ratio:"1:1"  },
+];
+
+// ══════════════════════════════════════════════════════════════
+// NEWS TEMPLATES — har template ka apna layout, style, gradient
+// ══════════════════════════════════════════════════════════════
+const TEMPLATES = [
+  {
+    id: "blank",
+    label: "Blank",
+    icon: "⬜",
+    desc: "Clean canvas",
+    apply: () => ({
+      gradStyle: "none",
+      frame: "none",
+      filter: "none",
+      textLayers: [
+        { id: 1, text: "", x: 540, y: 900, size: 52, style: "bold_white", color: "#ffffff", fontFamily: "Arial" }
+      ],
+      showLogo: true,
+      watermark: false,
+      showHashtags: false,
+      vignette: 0,
+      brightness: 100,
+      contrast: 100,
+      saturation: 100,
+    })
+  },
+  {
+    id: "breaking",
+    label: "Breaking News",
+    icon: "🚨",
+    desc: "Red alert style",
+    apply: () => ({
+      gradStyle: "bottom",
+      frame: "solid",
+      frameColor: "#CC0000",
+      frameWidth: 6,
+      filter: "drama",
+      vignette: 40,
+      brightness: 95,
+      contrast: 115,
+      saturation: 110,
+      textLayers: [
+        { id: 1, text: "BREAKING NEWS", x: 540, y: 820, size: 64, style: "red_box", color: "#ffffff", fontFamily: "Impact" },
+        { id: 2, text: "Headline yahan likhein...", x: 540, y: 920, size: 38, style: "bold_white", color: "#ffffff", fontFamily: "Arial" },
+      ],
+      showLogo: true,
+      watermark: true,
+      watermarkText: "BBN NEWS",
+      showHashtags: false,
+    })
+  },
+  {
+    id: "top_story",
+    label: "Top Story",
+    icon: "📰",
+    desc: "Gold headline bar",
+    apply: () => ({
+      gradStyle: "bottom",
+      frame: "none",
+      filter: "cinema",
+      vignette: 35,
+      brightness: 100,
+      contrast: 110,
+      saturation: 105,
+      textLayers: [
+        { id: 1, text: "TOP STORY", x: 540, y: 760, size: 28, style: "gold_box", color: "#111111", fontFamily: "Arial" },
+        { id: 2, text: "Khabar ka headline yahan...", x: 540, y: 870, size: 46, style: "bold_white", color: "#ffffff", fontFamily: "Georgia" },
+        { id: 3, text: "BBN NEWS • LIVE UPDATE", x: 540, y: 960, size: 22, style: "minimal", color: "#D4A520", fontFamily: "Trebuchet MS" },
+      ],
+      showLogo: true,
+      watermark: false,
+      showHashtags: true,
+      hashtags: "#TopStory #BBNNews #BreakingNews",
+    })
+  },
+  {
+    id: "exclusive",
+    label: "Exclusive",
+    icon: "⭐",
+    desc: "Premium dark style",
+    apply: () => ({
+      gradStyle: "full",
+      frame: "glow",
+      frameColor: "#D4A520",
+      frameWidth: 4,
+      filter: "cinema",
+      vignette: 55,
+      brightness: 90,
+      contrast: 120,
+      saturation: 90,
+      textLayers: [
+        { id: 1, text: "EXCLUSIVE", x: 540, y: 700, size: 72, style: "neon_glow", color: "#D4A520", fontFamily: "Impact" },
+        { id: 2, text: "Apni khabar yahan likhein...", x: 540, y: 830, size: 40, style: "bold_white", color: "#ffffff", fontFamily: "Georgia" },
+        { id: 3, text: "Only on BBN News", x: 540, y: 930, size: 24, style: "minimal", color: "#D4A520", fontFamily: "Trebuchet MS" },
+      ],
+      showLogo: true,
+      watermark: true,
+      watermarkText: "BBN EXCLUSIVE",
+      showHashtags: false,
+    })
+  },
+  {
+    id: "live",
+    label: "LIVE Update",
+    icon: "🔴",
+    desc: "Live broadcast style",
+    apply: () => ({
+      gradStyle: "left",
+      frame: "none",
+      filter: "vivid",
+      vignette: 30,
+      brightness: 102,
+      contrast: 112,
+      saturation: 120,
+      textLayers: [
+        { id: 1, text: "🔴 LIVE", x: 540, y: 760, size: 56, style: "red_box", color: "#ffffff", fontFamily: "Impact" },
+        { id: 2, text: "Update headline yahan...", x: 540, y: 880, size: 42, style: "dark_box", color: "#ffffff", fontFamily: "Arial" },
+        { id: 3, text: "BBN NEWS LIVE", x: 540, y: 960, size: 20, style: "minimal", color: "rgba(255,255,255,0.7)", fontFamily: "Arial" },
+      ],
+      showLogo: true,
+      watermark: false,
+      showHashtags: true,
+      hashtags: "#LIVE #BBNNewsLive #BreakingNews",
+    })
+  },
+  {
+    id: "opinion",
+    label: "Opinion",
+    icon: "💬",
+    desc: "Subtle editorial look",
+    apply: () => ({
+      gradStyle: "bottom",
+      frame: "rounded",
+      frameColor: "#ffffff",
+      frameWidth: 5,
+      filter: "matte",
+      vignette: 25,
+      brightness: 105,
+      contrast: 95,
+      saturation: 80,
+      textLayers: [
+        { id: 1, text: "OPINION", x: 540, y: 790, size: 28, style: "minimal", color: "#D4A520", fontFamily: "Georgia" },
+        { id: 2, text: "Apna point of view likhein...", x: 540, y: 880, size: 40, style: "bold_white", color: "#ffffff", fontFamily: "Georgia" },
+        { id: 3, text: "— BBN News Desk", x: 540, y: 960, size: 22, style: "minimal", color: "rgba(255,255,255,0.6)", fontFamily: "Georgia" },
+      ],
+      showLogo: true,
+      watermark: false,
+      showHashtags: false,
+    })
+  },
+  {
+    id: "sports",
+    label: "Sports",
+    icon: "🏆",
+    desc: "Dynamic sports style",
+    apply: () => ({
+      gradStyle: "color",
+      gradColor: "rgba(0,80,200,0.85)",
+      frame: "double",
+      frameColor: "#D4A520",
+      frameWidth: 5,
+      filter: "vivid",
+      vignette: 20,
+      brightness: 105,
+      contrast: 118,
+      saturation: 140,
+      textLayers: [
+        { id: 1, text: "SPORTS NEWS", x: 540, y: 790, size: 54, style: "outline", color: "#ffffff", fontFamily: "Impact" },
+        { id: 2, text: "Score / Headline yahan...", x: 540, y: 900, size: 38, style: "bold_white", color: "#ffffff", fontFamily: "Arial" },
+      ],
+      showLogo: true,
+      watermark: true,
+      watermarkText: "BBN SPORTS",
+      showHashtags: true,
+      hashtags: "#Sports #BBNSports #Cricket",
+    })
+  },
+  {
+    id: "politics",
+    label: "Politics",
+    icon: "🏛️",
+    desc: "Serious political tone",
+    apply: () => ({
+      gradStyle: "bottom",
+      frame: "solid",
+      frameColor: "#111111",
+      frameWidth: 8,
+      filter: "bw",
+      vignette: 50,
+      brightness: 92,
+      contrast: 130,
+      saturation: 0,
+      textLayers: [
+        { id: 1, text: "POLITICS", x: 540, y: 780, size: 30, style: "newspaper", color: "#1a1a1a", fontFamily: "Georgia" },
+        { id: 2, text: "Political news headline...", x: 540, y: 890, size: 44, style: "bold_white", color: "#ffffff", fontFamily: "Georgia" },
+        { id: 3, text: "BBN NEWS POLITICAL DESK", x: 540, y: 975, size: 18, style: "minimal", color: "rgba(255,255,255,0.5)", fontFamily: "Georgia" },
+      ],
+      showLogo: true,
+      watermark: false,
+      showHashtags: false,
+    })
+  },
+  {
+    id: "crime",
+    label: "Crime Alert",
+    icon: "🚔",
+    desc: "Dark alert style",
+    apply: () => ({
+      gradStyle: "full",
+      frame: "none",
+      filter: "drama",
+      vignette: 65,
+      brightness: 85,
+      contrast: 135,
+      saturation: 85,
+      textLayers: [
+        { id: 1, text: "⚠️ CRIME ALERT", x: 540, y: 760, size: 58, style: "red_box", color: "#ffffff", fontFamily: "Impact" },
+        { id: 2, text: "Crime news headline yahan...", x: 540, y: 880, size: 40, style: "dark_box", color: "#ffffff", fontFamily: "Arial" },
+        { id: 3, text: "BBN Crime Desk", x: 540, y: 965, size: 20, style: "minimal", color: "rgba(255,180,0,0.85)", fontFamily: "Arial" },
+      ],
+      showLogo: true,
+      watermark: true,
+      watermarkText: "BBN NEWS",
+      showHashtags: false,
+    })
+  },
+  {
+    id: "weather",
+    label: "Weather",
+    icon: "🌤️",
+    desc: "Sky blue weather card",
+    apply: () => ({
+      gradStyle: "color",
+      gradColor: "rgba(0,120,220,0.7)",
+      frame: "none",
+      filter: "cool",
+      vignette: 15,
+      brightness: 108,
+      contrast: 100,
+      saturation: 120,
+      textLayers: [
+        { id: 1, text: "🌤️ WEATHER UPDATE", x: 540, y: 780, size: 46, style: "dark_box", color: "#ffffff", fontFamily: "Arial" },
+        { id: 2, text: "Mausam ki khabar yahan...", x: 540, y: 900, size: 36, style: "bold_white", color: "#ffffff", fontFamily: "Arial" },
+      ],
+      showLogo: true,
+      watermark: false,
+      showHashtags: true,
+      hashtags: "#Weather #Mausam #BBNNews",
+    })
+  },
+  {
+    id: "special",
+    label: "Special Report",
+    icon: "📡",
+    desc: "Investigative style",
+    apply: () => ({
+      gradStyle: "bottom",
+      frame: "glow",
+      frameColor: "#CC0000",
+      frameWidth: 3,
+      filter: "golden",
+      vignette: 45,
+      brightness: 95,
+      contrast: 115,
+      saturation: 110,
+      textLayers: [
+        { id: 1, text: "SPECIAL REPORT", x: 540, y: 770, size: 38, style: "gold_box", color: "#111", fontFamily: "Impact" },
+        { id: 2, text: "Investigation headline...", x: 540, y: 875, size: 44, style: "bold_white", color: "#ffffff", fontFamily: "Georgia" },
+        { id: 3, text: "BBN Investigates", x: 540, y: 960, size: 22, style: "minimal", color: "#D4A520", fontFamily: "Trebuchet MS" },
+      ],
+      showLogo: true,
+      watermark: true,
+      watermarkText: "BBN INVESTIGATES",
+      showHashtags: false,
+    })
+  },
+  {
+    id: "celebration",
+    label: "Celebration",
+    icon: "🎉",
+    desc: "Festival / event style",
+    apply: () => ({
+      gradStyle: "color",
+      gradColor: "rgba(180,0,120,0.75)",
+      frame: "double",
+      frameColor: "#D4A520",
+      frameWidth: 6,
+      filter: "warm",
+      vignette: 20,
+      brightness: 108,
+      contrast: 105,
+      saturation: 140,
+      textLayers: [
+        { id: 1, text: "🎉 CELEBRATIONS", x: 540, y: 780, size: 56, style: "neon_glow", color: "#FFD700", fontFamily: "Impact" },
+        { id: 2, text: "Event headline yahan...", x: 540, y: 900, size: 40, style: "bold_white", color: "#ffffff", fontFamily: "Georgia" },
+      ],
+      showLogo: true,
+      watermark: false,
+      showHashtags: true,
+      hashtags: "#Celebration #BBNNews #Festival",
+    })
+  },
 ];
 
 // ── Filters (CSS-style) ───────────────────────────────────────
@@ -182,28 +485,17 @@ function drawCanvas(canvas, photoImg, logoImg, cfg) {
       ctx.save();
       ctx.font = `${style.font} ${fsPx}px ${layer.fontFamily||"Arial"},sans-serif`;
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      // Measure text
       const tw = ctx.measureText(layer.text).width;
       const th = fsPx*1.3;
       const pad = 14*sc;
-      // Background box
       if(style.bg && style.bg !== "transparent"){
         ctx.fillStyle = style.bg;
         if(ctx.roundRect) ctx.roundRect(x-tw/2-pad, y-th/2, tw+pad*2, th, 4*sc);
         else ctx.rect(x-tw/2-pad, y-th/2, tw+pad*2, th);
         ctx.fill();
       }
-      // Glow
-      if(style.glow){
-        ctx.shadowColor = layer.color||style.color;
-        ctx.shadowBlur = 20*sc;
-      }
-      // Stroke
-      if(style.stroke){
-        ctx.strokeStyle = "#000"; ctx.lineWidth = 3*sc;
-        ctx.strokeText(layer.text, x, y);
-      }
-      // Shadow
+      if(style.glow){ ctx.shadowColor = layer.color||style.color; ctx.shadowBlur = 20*sc; }
+      if(style.stroke){ ctx.strokeStyle = "#000"; ctx.lineWidth = 3*sc; ctx.strokeText(layer.text, x, y); }
       if(style.shadow){ ctx.shadowColor="rgba(0,0,0,0.8)"; ctx.shadowBlur=8*sc; ctx.shadowOffsetX=2*sc; ctx.shadowOffsetY=2*sc; }
       ctx.fillStyle = layer.color||style.color;
       ctx.fillText(layer.text, x, y);
@@ -263,7 +555,7 @@ function drawCanvas(canvas, photoImg, logoImg, cfg) {
 }
 
 // ── localStorage ──────────────────────────────────────────────
-const LS_KEY = "bbn_spe_v1";
+const LS_KEY = "bbn_spe_v2";
 function lsSave(d){ try{localStorage.setItem(LS_KEY,JSON.stringify(d));}catch{} }
 function lsLoad(){ try{const d=localStorage.getItem(LS_KEY);return d?JSON.parse(d):null;}catch{return null;} }
 
@@ -271,7 +563,8 @@ function lsLoad(){ try{const d=localStorage.getItem(LS_KEY);return d?JSON.parse(
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════
 export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
-  const [format,      setFormat]      = useState("square");
+  const [size,        setSize]        = useState("square");
+  const [template,    setTemplate]    = useState("blank");
   const [filter,      setFilter]      = useState("none");
   const [brightness,  setBrightness]  = useState(100);
   const [contrast,    setContrast]    = useState(100);
@@ -300,7 +593,7 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
     { id:1, text:"", x:540, y:900, size:48, style:"bold_white", color:"#ffffff", fontFamily:"Arial" }
   ]);
   const [stickers,    setStickers]    = useState([]);
-  const [activeTab,   setActiveTab]   = useState("photo");
+  const [activeTab,   setActiveTab]   = useState("template");
   const [photoPrev,   setPhotoPrev]   = useState(null);
   const [photoUploading,setPhotoUploading]=useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -313,7 +606,7 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
   const photoRef  = useRef(null);
   const logoRef   = useRef(null);
 
-  const fmt = FORMATS.find(f=>f.id===format)||FORMATS[0];
+  const sz = SIZES.find(f=>f.id===size)||SIZES[0];
 
   function showToast(msg){ setToast(msg); setTimeout(()=>setToast(""),2500); }
 
@@ -323,10 +616,10 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
   // ── Redraw whenever anything changes ──
   const redraw = useCallback(()=>{
     const c=canvasRef.current; if(!c)return;
-    c.width=fmt.w; c.height=fmt.h;
+    c.width=sz.w; c.height=sz.h;
     drawCanvas(c, photoRef.current, logoRef.current, cfg);
   // eslint-disable-next-line
-  },[format,filter,brightness,contrast,saturation,blur,warmth,vignette,grain,rotation,flipH,flipV,panX,panY,fadeEdges,gradStyle,gradColor,frame,frameColor,frameWidth,showLogo,watermark,watermarkText,showHashtags,hashtags,textLayers,stickers]);
+  },[size,filter,brightness,contrast,saturation,blur,warmth,vignette,grain,rotation,flipH,flipV,panX,panY,fadeEdges,gradStyle,gradColor,frame,frameColor,frameWidth,showLogo,watermark,watermarkText,showHashtags,hashtags,textLayers,stickers]);
 
   useEffect(()=>{ redraw(); },[redraw]);
 
@@ -346,7 +639,7 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
       if(user?.uid){ const fd=await loadUserData(user.uid); d=fd?.socialPhoto||null; }
       if(!d) d=lsLoad();
       if(!d) return;
-      if(d.format) setFormat(d.format);
+      if(d.size) setSize(d.size);
       if(d.filter) setFilter(d.filter);
       if(d.brightness) setBrightness(d.brightness);
       if(d.contrast)   setContrast(d.contrast);
@@ -370,11 +663,11 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
 
   // ── Auto-save ──
   useEffect(()=>{
-    const d={format,filter,brightness,contrast,saturation,blur,warmth,vignette,grain,gradStyle,gradColor,frame,frameColor,watermarkText,hashtags,textLayers};
+    const d={size,filter,brightness,contrast,saturation,blur,warmth,vignette,grain,gradStyle,gradColor,frame,frameColor,watermarkText,hashtags,textLayers};
     lsSave(d);
     if(user?.uid) saveUserData(user.uid,{socialPhoto:d});
   // eslint-disable-next-line
-  },[format,filter,brightness,contrast,saturation,blur,warmth,vignette,grain,gradStyle,gradColor,frame,frameColor,watermarkText,hashtags,textLayers]);
+  },[size,filter,brightness,contrast,saturation,blur,warmth,vignette,grain,gradStyle,gradColor,frame,frameColor,watermarkText,hashtags,textLayers]);
 
   function loadPhoto(src){
     const img=new Image(); img.crossOrigin="anonymous";
@@ -394,12 +687,35 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
     setPhotoUploading(false);
   }
 
+  // ── Apply a template ──
+  function applyTemplate(tpl) {
+    const s = tpl.apply();
+    setTemplate(tpl.id);
+    if(s.filter)        setFilter(s.filter);
+    if(s.brightness!=null) setBrightness(s.brightness);
+    if(s.contrast!=null)   setContrast(s.contrast);
+    if(s.saturation!=null) setSaturation(s.saturation);
+    if(s.vignette!=null)   setVignette(s.vignette);
+    if(s.gradStyle)     setGradStyle(s.gradStyle);
+    if(s.gradColor)     setGradColor(s.gradColor);
+    if(s.frame)         setFrame(s.frame);
+    if(s.frameColor)    setFrameColor(s.frameColor);
+    if(s.frameWidth!=null) setFrameWidth(s.frameWidth);
+    if(s.textLayers)    setTextLayers(s.textLayers);
+    if(s.showLogo!=null)   setShowLogo(s.showLogo);
+    if(s.watermark!=null)  setWatermark(s.watermark);
+    if(s.watermarkText) setWatermarkText(s.watermarkText);
+    if(s.showHashtags!=null) setShowHashtags(s.showHashtags);
+    if(s.hashtags)      setHashtags(s.hashtags);
+    showToast(`✅ Template: ${tpl.label}`);
+  }
+
   function downloadPNG(){
     const c=canvasRef.current; if(!c)return;
     setDownloading(true);
     setTimeout(()=>{
       const a=document.createElement("a");
-      a.download=`BBN_Social_${format}_${Date.now()}.png`;
+      a.download=`BBN_Social_${size}_${Date.now()}.png`;
       a.href=c.toDataURL("image/png");
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setDownloading(false);
@@ -436,7 +752,6 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
 
   const isMobile = typeof window!=="undefined" && window.innerWidth<=768;
 
-  // Smooth range slider
   const SlRow=({label,val,set,min,max,step=1,unit=""})=>(
     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
       <span style={{fontSize:10,color:"var(--txt-lo)",minWidth:68,flexShrink:0,fontWeight:600}}>{label}</span>
@@ -465,7 +780,8 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
   function renderTab(){
     switch(activeTab){
 
-      case "photo": return (
+      // ══════════════ NEW TEMPLATE TAB ══════════════
+      case "template": return (
         <div>
           <SectionHdr icon="📸" label="Upload Photo"/>
           <label style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,border:"2px dashed var(--border-hi)",borderRadius:8,padding:"16px 10px",cursor:"pointer",background:"var(--bg-card)",marginBottom:8}}>
@@ -478,19 +794,45 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
           </label>
           {photoPrev && <img src={photoPrev} alt="" style={{width:"100%",height:72,objectFit:"cover",borderRadius:6,marginBottom:10,border:"1px solid var(--border)"}}/>}
 
-          <SectionHdr icon="📐" label="Format / Size"/>
+          <SectionHdr icon="🎬" label="News Templates"/>
+          <div style={{fontSize:10,color:"var(--txt-lo)",marginBottom:8,background:"rgba(212,165,32,0.06)",borderRadius:4,padding:"5px 8px",border:"1px solid rgba(212,165,32,0.15)"}}>
+            💡 Template choose karo — sab kuch automatically set ho jayega. Baad mein Text tab se headline badal sakte ho.
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:10}}>
+            {TEMPLATES.map(tpl=>(
+              <button key={tpl.id} onClick={()=>applyTemplate(tpl)} style={{
+                padding:"10px 6px",borderRadius:8,fontSize:10,fontWeight:700,cursor:"pointer",
+                textAlign:"center",display:"flex",flexDirection:"column",gap:3,alignItems:"center",
+                background:template===tpl.id?"rgba(204,34,0,0.18)":"var(--bg-card)",
+                color:template===tpl.id?"#fff":"var(--txt-lo)",
+                border:template===tpl.id?"1.5px solid var(--red)":"1px solid var(--border)",
+                transition:"all 0.15s"
+              }}>
+                <span style={{fontSize:22}}>{tpl.icon}</span>
+                <span style={{fontWeight:800,fontSize:11}}>{tpl.label}</span>
+                <span style={{fontSize:9,opacity:0.65,lineHeight:1.3}}>{tpl.desc}</span>
+                {template===tpl.id && <span style={{fontSize:8,color:"#CC0000",fontWeight:900,letterSpacing:0.5}}>✓ ACTIVE</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+
+      case "photo": return (
+        <div>
+          <SectionHdr icon="📐" label="Canvas Size"/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,marginBottom:10}}>
-            {FORMATS.map(f=>(
-              <button key={f.id} onClick={()=>setFormat(f.id)} style={{
+            {SIZES.map(f=>(
+              <button key={f.id} onClick={()=>setSize(f.id)} style={{
                 padding:"7px 5px",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",
                 textAlign:"center",display:"flex",flexDirection:"column",gap:2,alignItems:"center",
-                background:format===f.id?"rgba(204,34,0,0.18)":"var(--bg-card)",
-                color:format===f.id?"#fff":"var(--txt-lo)",
-                border:format===f.id?"1.5px solid var(--red)":"1px solid var(--border)"
+                background:size===f.id?"rgba(204,34,0,0.18)":"var(--bg-card)",
+                color:size===f.id?"#fff":"var(--txt-lo)",
+                border:size===f.id?"1.5px solid var(--red)":"1px solid var(--border)"
               }}>
                 <span style={{fontSize:18}}>{f.icon}</span>
                 <span style={{fontWeight:800}}>{f.label}</span>
-                <span style={{fontSize:9,opacity:0.7}}>{f.ratio} • {f.platform}</span>
+                <span style={{fontSize:9,opacity:0.7}}>{f.ratio} • {f.w}×{f.h}</span>
               </button>
             ))}
           </div>
@@ -498,8 +840,8 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
           <SectionHdr icon="🔄" label="Transform"/>
           <div style={{background:"var(--bg-card)",border:"1px solid var(--border)",borderRadius:6,padding:10,marginBottom:8}}>
             <SlRow label="Rotation" val={rotation} set={setRotation} min={-180} max={180} unit="°"/>
-            <SlRow label="Pan Horizontal" val={panX} set={setPanX} min={-200} max={200}/>
-            <SlRow label="Pan Vertical" val={panY} set={setPanY} min={-200} max={200}/>
+            <SlRow label="Pan H" val={panX} set={setPanX} min={-200} max={200}/>
+            <SlRow label="Pan V" val={panY} set={setPanY} min={-200} max={200}/>
             <div style={{display:"flex",gap:6,marginTop:4}}>
               <button onClick={()=>setFlipH(v=>!v)} style={{
                 flex:1,height:32,borderRadius:5,fontSize:10,fontWeight:700,cursor:"pointer",
@@ -579,7 +921,7 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
         <div>
           <SectionHdr icon="✍️" label="Text Layers"/>
           <div style={{fontSize:10,color:"var(--txt-lo)",marginBottom:8,lineHeight:1.5,background:"rgba(212,165,32,0.06)",borderRadius:4,padding:"5px 8px",border:"1px solid rgba(212,165,32,0.15)"}}>
-            💡 Multiple text layers add kar sakte ho. X/Y position canvas pe (0-1080).
+            💡 Template se pre-filled text layers aayi hain — sirf text badlo!
           </div>
 
           {textLayers.map((layer,idx)=>(
@@ -735,12 +1077,14 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
     }
   }
 
+  // Updated tabs — template first
   const TABS=[
-    {id:"photo",   icon:"📸",label:"Photo"},
-    {id:"adjust",  icon:"🎨",label:"Adjust"},
-    {id:"text",    icon:"✍️",label:"Text"},
-    {id:"sticker", icon:"🎭",label:"Sticker"},
-    {id:"overlay", icon:"🖼️",label:"Overlay"},
+    {id:"template", icon:"🎬",label:"Template"},
+    {id:"photo",    icon:"📐",label:"Size"},
+    {id:"adjust",   icon:"🎨",label:"Adjust"},
+    {id:"text",     icon:"✍️",label:"Text"},
+    {id:"sticker",  icon:"🎭",label:"Sticker"},
+    {id:"overlay",  icon:"🖼️",label:"Overlay"},
   ];
 
   // ── MAIN RENDER ──
@@ -767,32 +1111,28 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════
-          MOBILE LAYOUT — canvas top, controls bottom
-          ══════════════════════════════════════════════ */}
       {isMobile ? (
         <>
-          {/* Top: Canvas area — fixed compact height */}
           <div style={{display:"flex",flexDirection:"column",background:"#060608",flexShrink:0}}>
-            {/* Format ribbon */}
+            {/* Size ribbon */}
             <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",padding:"4px 8px",gap:4,overflowX:"auto",flexShrink:0,WebkitOverflowScrolling:"touch"}}>
-              {FORMATS.map(f=>(
-                <button key={f.id} onClick={()=>setFormat(f.id)} style={{
+              {SIZES.map(f=>(
+                <button key={f.id} onClick={()=>setSize(f.id)} style={{
                   padding:"3px 8px",borderRadius:4,fontSize:9,fontWeight:700,cursor:"pointer",flexShrink:0,
                   whiteSpace:"nowrap",
-                  background:format===f.id?"rgba(204,34,0,0.2)":"var(--bg-card)",
-                  color:format===f.id?"#fff":"var(--txt-lo)",
-                  border:format===f.id?"1.5px solid var(--red)":"1px solid var(--border)"
+                  background:size===f.id?"rgba(204,34,0,0.2)":"var(--bg-card)",
+                  color:size===f.id?"#fff":"var(--txt-lo)",
+                  border:size===f.id?"1.5px solid var(--red)":"1px solid var(--border)"
                 }}>{f.icon} {f.label} <span style={{opacity:0.6}}>{f.ratio}</span></button>
               ))}
             </div>
             {/* Canvas */}
             <div style={{display:"flex",justifyContent:"center",alignItems:"center",padding:"6px 8px",background:"#060608"}}>
-              <canvas ref={canvasRef} width={fmt.w} height={fmt.h}
+              <canvas ref={canvasRef} width={sz.w} height={sz.h}
                 style={{height:"190px",maxWidth:"100%",objectFit:"contain",borderRadius:4,boxShadow:"0 4px 24px rgba(0,0,0,0.9)"}}/>
             </div>
             {/* Download button */}
-            <div style={{display:"flex",gap:6,margin:"0 10px 6px",}}>
+            <div style={{display:"flex",gap:6,margin:"0 10px 6px"}}>
               <button onClick={()=>setShowPreview(true)} style={{flex:1,height:36,borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",background:"rgba(212,165,32,0.1)",border:"1px solid #D4A520",color:"#D4A520"}}>👁 Preview</button>
               <button onClick={downloadPNG} disabled={downloading} style={{flex:2,height:36,borderRadius:6,fontSize:12,fontWeight:800,cursor:"pointer",background:"linear-gradient(135deg,#CC0000,#880000)",border:"none",color:"#fff"}}>
                 {downloading?"⏳ Saving...":"⬇️ Download PNG"}
@@ -800,14 +1140,12 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
             </div>
           </div>
 
-          {/* Bottom: Tabs + Scrollable controls */}
           <div style={{flex:1,display:"flex",flexDirection:"column",background:"var(--bg-panel)",borderTop:"2px solid var(--border)",overflow:"hidden"}}>
-            {/* Tab bar */}
-            <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+            <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",flexShrink:0,overflowX:"auto"}}>
               {TABS.map(t=>(
                 <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{
-                  flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,
-                  padding:"7px 2px",cursor:"pointer",border:"none",
+                  flex:"0 0 auto",display:"flex",flexDirection:"column",alignItems:"center",gap:2,
+                  padding:"7px 10px",cursor:"pointer",border:"none",
                   background:activeTab===t.id?"rgba(204,34,0,0.12)":"transparent",
                   borderBottom:activeTab===t.id?"2px solid var(--red)":"2px solid transparent",
                   transition:"all 0.15s"
@@ -817,34 +1155,30 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
                 </button>
               ))}
             </div>
-            {/* Scrollable content */}
             <div style={{flex:1,overflowY:"auto",padding:"10px 12px",WebkitOverflowScrolling:"touch"}}>
               {renderTab()}
             </div>
           </div>
         </>
       ) : (
-        /* ══════════════════════════════════════════════
-           DESKTOP LAYOUT — canvas left, controls right
-           ══════════════════════════════════════════════ */
         <>
           {/* LEFT: Canvas */}
           <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-            {/* Format ribbon */}
-            <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",padding:"5px 8px",gap:4,overflowX:"auto",flexShrink:0,WebkitOverflowScrolling:"touch"}}>
-              {FORMATS.map(f=>(
-                <button key={f.id} onClick={()=>setFormat(f.id)} style={{
+            {/* Size ribbon */}
+            <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",padding:"5px 8px",gap:4,overflowX:"auto",flexShrink:0}}>
+              {SIZES.map(f=>(
+                <button key={f.id} onClick={()=>setSize(f.id)} style={{
                   padding:"4px 10px",borderRadius:5,fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0,
                   display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap",
-                  background:format===f.id?"rgba(204,34,0,0.2)":"var(--bg-card)",
-                  color:format===f.id?"#fff":"var(--txt-lo)",
-                  border:format===f.id?"1.5px solid var(--red)":"1px solid var(--border)"
+                  background:size===f.id?"rgba(204,34,0,0.2)":"var(--bg-card)",
+                  color:size===f.id?"#fff":"var(--txt-lo)",
+                  border:size===f.id?"1.5px solid var(--red)":"1px solid var(--border)"
                 }}>{f.icon} {f.label} <span style={{fontSize:9,opacity:0.6}}>{f.ratio}</span></button>
               ))}
             </div>
             {/* Canvas */}
             <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",padding:"8px",background:"#060608"}}>
-              <canvas ref={canvasRef} width={fmt.w} height={fmt.h} style={{
+              <canvas ref={canvasRef} width={sz.w} height={sz.h} style={{
                 maxWidth:"100%",maxHeight:"100%",
                 objectFit:"contain",borderRadius:3,
                 boxShadow:"0 8px 48px rgba(0,0,0,0.95)"
@@ -852,7 +1186,7 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
             </div>
             {/* Action row */}
             <div style={{background:"var(--bg-base)",borderTop:"1px solid var(--border)",padding:"6px 10px",display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-              <span style={{fontSize:10,color:"var(--txt-lo)",flex:1}}>{fmt.w}×{fmt.h} • {fmt.platform}</span>
+              <span style={{fontSize:10,color:"var(--txt-lo)",flex:1}}>{sz.w}×{sz.h} • {sz.label}</span>
               <button onClick={()=>setShowPreview(true)} style={{height:32,padding:"0 14px",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer",background:"rgba(212,165,32,0.1)",border:"1px solid #D4A520",color:"#D4A520"}}>👁 Preview</button>
               <button onClick={downloadPNG} disabled={downloading} style={{height:32,padding:"0 16px",borderRadius:5,fontSize:11,fontWeight:800,cursor:"pointer",background:"linear-gradient(135deg,#CC0000,#880000)",border:"none",color:"#fff"}}>
                 {downloading?"⏳":"⬇️"} PNG
@@ -860,19 +1194,19 @@ export default function SocialPhotoEditor({ user=null, globalLogo=null }) {
             </div>
           </div>
 
-          {/* RIGHT: Controls */}
-          <div style={{width:"300px",flexShrink:0,background:"var(--bg-panel)",borderLeft:"1px solid var(--border)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          {/* RIGHT: Controls — wider for 6 tabs */}
+          <div style={{width:"320px",flexShrink:0,background:"var(--bg-panel)",borderLeft:"1px solid var(--border)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
             <div style={{display:"flex",background:"var(--bg-base)",borderBottom:"1px solid var(--border)",flexShrink:0}}>
               {TABS.map(t=>(
                 <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{
                   flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,
-                  padding:"7px 2px",cursor:"pointer",border:"none",
+                  padding:"7px 1px",cursor:"pointer",border:"none",
                   background:activeTab===t.id?"rgba(204,34,0,0.12)":"transparent",
                   borderBottom:activeTab===t.id?"2px solid var(--red)":"2px solid transparent",
                   transition:"all 0.15s"
                 }}>
-                  <span style={{fontSize:16}}>{t.icon}</span>
-                  <span style={{fontSize:8,fontWeight:700,color:activeTab===t.id?"#fff":"var(--txt-lo)",letterSpacing:0.5}}>{t.label}</span>
+                  <span style={{fontSize:14}}>{t.icon}</span>
+                  <span style={{fontSize:7,fontWeight:700,color:activeTab===t.id?"#fff":"var(--txt-lo)",letterSpacing:0.5}}>{t.label}</span>
                 </button>
               ))}
             </div>
